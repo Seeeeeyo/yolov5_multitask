@@ -547,7 +547,8 @@ class AutoShape(nn.Module):
         # Apply to(), cpu(), cuda(), half() to model tensors that are not parameters or registered buffers
         self = super()._apply(fn)
         if self.pt:
-            m = self.model.model.model[-1] if self.dmb else self.model.model[-1]  # Detect()
+            m = self.model.model.model[-1] if self.dmb else self.model.model[-1]  # Detect() NEW
+            print('detect', m)
             m.stride = fn(m.stride)
             m.grid = list(map(fn, m.grid))
             if isinstance(m.anchor_grid, list):
@@ -565,6 +566,7 @@ class AutoShape(nn.Module):
         #   torch:           = torch.zeros(16,3,320,640)  # BCHW (scaled to size=640, 0-1 values)
         #   multiple:        = [Image.open('image1.jpg'), Image.open('image2.jpg'), ...]  # list of images
 
+        print('concat', self.model.model[-1])
         t = [time_sync()]
         p = next(self.model.parameters()) if self.pt else torch.zeros(1, device=self.model.device)  # for device, type
         autocast = self.amp and (p.device.type != 'cpu')  # Automatic Mixed Precision (AMP) inference
