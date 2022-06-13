@@ -260,7 +260,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
     no = na * (nc + 5)  # number of outputs = anchors * (classes + 5)
 
     layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
-    for i, (f, n, m, args) in enumerate(d['backbone'] + d['head']):  # from, number, module, args
+    for i, (f, n, m, args) in enumerate(d['backbone'] + d['det_head'] + d['class_head']):  # from, number, module, args
         # print(m, args)
 
         m = eval(m) if isinstance(m, str) else m  # eval strings
@@ -330,7 +330,7 @@ if __name__ == '__main__':
     # Create model
     im = torch.rand(opt.batch_size, 3, 640, 640).to(device)
     model = Model(opt.cfg).to(device)
-    print(model)
+    # print(model)
 
     # Options
     if opt.line_profile:  # profile layer by layer

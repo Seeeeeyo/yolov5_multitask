@@ -25,7 +25,7 @@ backbone:
   ]
 
 # YOLOv5 v6.0 head
-head:
+det_head:
   [[-1, 1, Conv, [512, 1, 1]], # 10
    [-1, 1, nn.Upsample, [None, 2, 'nearest']], # 11
    [[-1, 6], 1, Concat, [1]],  # 12 -- cat backbone P4
@@ -45,8 +45,11 @@ head:
    [-1, 3, C3, [1024, False]],  # 23 (P5/32-large)
 
    [[17, 20, 23], 1, Detect, [nc, anchors]],  # 24 --- Detect(P3, P4, P5)
+  ]
 
-   # classification head
-   [[10, 14], 1, Concat, [1]],  # NEW -- 25 -- cat feature maps 10/14
-   [[25, 17], 1, Concat, [1]],  # NEW -- 25 -- cat feature maps 25/17
+# classification head
+class_head:
+  [
+    [[10, 14], 1, Concat, [1]],  # NEW -- 25 -- cat feature maps 10/14
+    [[25, 17], 1, Concat, [1]],  # NEW -- 25 -- cat feature maps 25/17
   ]
