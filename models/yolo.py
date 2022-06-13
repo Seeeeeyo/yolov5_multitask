@@ -28,6 +28,7 @@ from utils.plots import feature_visualization
 from utils.torch_utils import (fuse_conv_and_bn, initialize_weights, model_info, profile, scale_img, select_device,
                                time_sync)
 
+
 try:
     import thop  # for FLOPs computation
 except ImportError:
@@ -150,15 +151,29 @@ class Model(nn.Module):
 
     def _forward_once(self, x, profile=False, visualize=False):
         y, dt = [], []  # outputs
+        print('\n')
         for m in self.model:
             # print("m.f", m.f)
+            print('layer', '--', m.i, '--', m._get_name())
             if m.f != -1:  # if not from previous layer
-                print('not from previous layer', m.f, ' --- m ', m)
                 x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
                 # print('x ', x)
+
             if profile:
                 self._profile_one_layer(m, x, dt)
+
+            try:
+                print('sum of input', round(torch.sum(x).item()),2)
+            except:
+                print('list')
+
             x = m(x)  # run
+
+            try:
+                print('Output:', x.shape)
+            except:
+                print('Output: ', len(x))
+            print('---------------------------------------------------')
             y.append(x if m.i in self.save else None)  # save output
             if visualize:
                 feature_visualization(x, m.type, m.i, save_dir=visualize)
@@ -298,7 +313,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             c2 = ch[f] // args[0] ** 2
         else:
             c2 = ch[f]
-
+        # print(c2)
         # print('HERE ', *(m(*args) for _ in range(n))) if n > 1 else m(*args)
         m_ = nn.Sequential(*(m(*args) for _ in range(n))) if n > 1 else m(*args)  # module
         t = str(m)[8:-2].replace('__main__.', '')  # module type
@@ -331,7 +346,17 @@ if __name__ == '__main__':
     im = torch.rand(opt.batch_size, 3, 640, 640).to(device)
     model = Model(opt.cfg).to(device)
     # print(model)
+    # torch.save(model, 'model_test.pt')
 
+    # m = model.model[-8:-1]  # last layer
+    # print(m)
+
+    # print(model_info(model,True))
+    # print(model.names)
+    for layer in range(-3,-1):
+        print(model.model[layer])
+    # ch = m.conv.in_channels if hasattr(m, 'conv') else sum([x.in_channels for x in m.m])  #
+    # print(ch)
     # Options
     if opt.line_profile:  # profile layer by layer
         _ = model(im, profile=True)

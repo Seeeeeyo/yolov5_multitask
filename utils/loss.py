@@ -115,6 +115,7 @@ class ComputeLoss:
         self.na = m.na  # number of anchors
         self.nc = m.nc  # number of classes
         self.nl = m.nl  # number of layers
+        print('num of layers', self.nl)
         self.anchors = m.anchors
         self.device = device
 

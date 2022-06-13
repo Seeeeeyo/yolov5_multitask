@@ -209,6 +209,8 @@ def run(
         # Loss
         if compute_loss:
             loss += compute_loss([x.float() for x in train_out], targets)[1]  # box, obj, cls
+           # assert loss[0].shape[0] == 3 # for now, should nbe 4 when multiclass
+            # print('val loss:', loss)
 
         # NMS
         targets[:, 2:] *= torch.tensor((width, height, width, height), device=device)  # to pixels
@@ -221,6 +223,8 @@ def run(
         for si, pred in enumerate(out):
             labels = targets[targets[:, 0] == si, 1:]
             nl, npr = labels.shape[0], pred.shape[0]  # number of labels, predictions
+            # print('npr', npr)
+            # print('nl', nl)
             path, shape = Path(paths[si]), shapes[si][0]
             correct = torch.zeros(npr, niou, dtype=torch.bool, device=device)  # init
             seen += 1
@@ -229,7 +233,7 @@ def run(
                 if nl:
                     stats.append((correct, *torch.zeros((3, 0), device=device)))
                 continue
-
+            # print('stats', stats)
             # Predictions
             if single_cls:
                 pred[:, 5] = 0
