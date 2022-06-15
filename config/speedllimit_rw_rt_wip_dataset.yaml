@@ -1,9 +1,0 @@
-# train and val data as 1) directory: path/images/, 2) file: path/images.txt, or 3) list: [path1/images/, path2/images/]
-train: data/multitasks/esmart_wip/train.txt  # x images
-val: data/multitasks/esmart_wip/val.txt   #  y images
-
-# number of classes
-nc: 10
-
-# class names
-names: [ 'speed_limit', "rw_tcd", "highway",  "interchange", "urban","rural-paved", "rural-dirt", "parking", "res1", "res2"]
