@@ -151,7 +151,7 @@ class Model(nn.Module):
 
     def _forward_once(self, x, profile=False, visualize=False):
         y, dt = [], []  # outputs
-        print('\n')
+        # print('\n')
         for m in self.model:
             # print("m.f", m.f)
             # print('layer', '--', m.i, '--', m._get_name())
@@ -349,8 +349,8 @@ if __name__ == '__main__':
 
     # print(model_info(model,True))
     # print(model.names)
-    for layer in range(-3,-1):
-        print(model.model[layer])
+    # for layer in range(-3,-1):
+    #     print(model.model[layer])
     # ch = m.conv.in_channels if hasattr(m, 'conv') else sum([x.in_channels for x in m.m])  #
     # print(ch)
     # Options
