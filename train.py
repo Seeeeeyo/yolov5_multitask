@@ -301,7 +301,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     model.class_weights = labels_to_class_weights(dataset.labels, nc).to(device) * nc  # attach class weights
     model.names = names
     # print('names', names)
-    print('model', model)
+    # print('model', model)
     # torch.save(model, 'model.pt')
     # x = torch.randn(6, 3, 224, 224, requires_grad=True)
     # torch.onnx.export(model.cpu(), x, 'model.onnx',opset_version=11)
@@ -344,9 +344,11 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         if RANK in {-1, 0}:
             pbar = tqdm(pbar, total=nb, bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')  # progress bar
         optimizer.zero_grad()
-        for i, (imgs, targets, paths, _) in pbar:  # batch -------------------------------------------------------------
+        for i, (imgs, targets, paths, shapes, gt_class) in pbar:  # batch -------------------------------------------------------------
             # print('img shape: ', imgs.shape) # [batch_size, 3, height_img, width_img]
-            # print('targets shape: ', targets.shape) # torch.Size([204, 6])
+            print('\n')
+            print('targets shape: ', targets.shape) # torch.Size([204, 6])
+            print('gtclass shape', len(gt_class))
             # print('path'), paths
             callbacks.run('on_train_batch_start')
             ni = i + nb * epoch  # number integrated batches (since train start)

@@ -126,13 +126,13 @@ def create_dataloader(path,
             image_weights=image_weights,
             prefix=prefix)
 
-    print('dataset', dataset)
+    # print('dataset', dataset)
     batch_size = min(batch_size, len(dataset))
     nd = torch.cuda.device_count()  # number of CUDA devices
     nw = min([os.cpu_count() // max(nd, 1), batch_size if batch_size > 1 else 0, workers])  # number of workers
     sampler = None if rank == -1 else distributed.DistributedSampler(dataset, shuffle=shuffle)
     loader = DataLoader if image_weights else InfiniteDataLoader  # only DataLoader allows for attribute updates
-    print('loader', loader)
+    # print('loader', loader)
     return loader(dataset,
                   batch_size=batch_size,
                   shuffle=shuffle and sampler is None,
@@ -1073,6 +1073,7 @@ class LoadImagesAndLabelsAndClasses(Dataset):
 
         hyp = self.hyp
         mosaic = self.mosaic and random.random() < hyp['mosaic']
+        mosaic = False # TODO Remove this
         if mosaic:
             # Load mosaic
             img, labels = self.load_mosaic(index)
@@ -1092,6 +1093,12 @@ class LoadImagesAndLabelsAndClasses(Dataset):
             shapes = (h0, w0), ((h / h0, w / w0), pad)  # for COCO mAP rescaling
 
             labels = self.labels[index].copy()
+
+            # print('labels before', labels)
+            # labels.append(gt_class)
+            # print('labels get item', labels)
+
+
             if labels.size:  # normalized xywh to pixel xyxy format
                 labels[:, 1:] = xywhn2xyxy(labels[:, 1:], ratio[0] * w, ratio[1] * h, padw=pad[0], padh=pad[1])
 
@@ -1139,8 +1146,9 @@ class LoadImagesAndLabelsAndClasses(Dataset):
         # Convert
         img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
         img = np.ascontiguousarray(img)
-
-        return torch.from_numpy(img), labels_out, self.im_files[index], shapes
+        gt_class = self.gt_classif[index]
+        # print('type', type(gt_class))
+        return torch.from_numpy(img), labels_out, self.im_files[index], shapes, gt_class
 
     def load_image(self, i):
         # Loads 1 image from dataset index 'i', returns (im, original hw, resized hw)
@@ -1302,14 +1310,23 @@ class LoadImagesAndLabelsAndClasses(Dataset):
 
     @staticmethod
     def collate_fn(batch):
-        im, label, path, shapes = zip(*batch)  # transposed
+        im, label, path, shapes, gt_class = zip(*batch)  # transposed
+        # print('class_new', len(gt_class))
+        # print('HERE')
+        # print('im', im[0])
+        # print('label', label[0])
+        # print('path', path[0])
+        # print('shape', shapes[0])
         for i, lb in enumerate(label):
             lb[:, 0] = i  # add target image index for build_targets()
-        return torch.stack(im, 0), torch.cat(label, 0), path, shapes
+        # print('label', label)
+        return torch.stack(im, 0), torch.cat(label, 0), path, shapes, torch.tensor(np.asarray(gt_class))
 
     @staticmethod
     def collate_fn4(batch):
+        print('HERE 4')
         img, label, path, shapes = zip(*batch)  # transposed
+
         n = len(shapes) // 4
         im4, label4, path4, shapes4 = [], [], path[:n], shapes[:n]
 
