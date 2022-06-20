@@ -79,11 +79,14 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     LOGGER.info(colorstr('hyperparameters: ') + ', '.join(f'{k}={v}' for k, v in hyp.items()))
 
     # Save run settings
+    # TODO uncomment this and trace the error
+    """
     if not evolve:
         with open(save_dir / 'hyp.yaml', 'w') as f:
             yaml.safe_dump(hyp, f, sort_keys=False)
         with open(save_dir / 'opt.yaml', 'w') as f:
             yaml.safe_dump(vars(opt), f, sort_keys=False)
+    """
 
     # Loggers
     data_dict = None
@@ -291,7 +294,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
     # Model attributes
     nl = de_parallel(model).model[-1].nl  # number of detection layers (to scale hyps)
-    print('number of layers: ', nl)
+    #print('number of layers: ', nl)
     hyp['box'] *= 3 / nl  # scale to layers
     hyp['cls'] *= nc / 80 * 3 / nl  # scale to classes and layers
     hyp['obj'] *= (imgsz / 640) ** 2 * 3 / nl  # scale to image size and layers
@@ -322,7 +325,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 f'Using {train_loader.num_workers * WORLD_SIZE} dataloader workers\n'
                 f"Logging results to {colorstr('bold', save_dir)}\n"
                 f'Starting training for {epochs} epochs...')
-    for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
+    for epoch in range(start_epoch, epochs):  # epoch -------------------------------------------------------
         callbacks.run('on_train_epoch_start')
         model.train()
 
@@ -336,19 +339,20 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         # b = int(random.uniform(0.25 * imgsz, 0.75 * imgsz + gs) // gs * gs)
         # dataset.mosaic_border = [b - imgsz, -b]  # height, width borders
 
-        mloss = torch.zeros(3, device=device)  # mean losses
+        mloss = torch.zeros(4, device=device)  # mean losses
         if RANK != -1:
             train_loader.sampler.set_epoch(epoch)
         pbar = enumerate(train_loader)
-        LOGGER.info(('\n' + '%10s' * 7) % ('Epoch', 'gpu_mem', 'box', 'obj', 'cls', 'labels', 'img_size'))
+        LOGGER.info(('\n' + '%10s' * 8) % ('Epoch', 'gpu_mem', 'box', 'obj', 'cls_det', 'cls', 'labels', 'img_size'))
         if RANK in {-1, 0}:
             pbar = tqdm(pbar, total=nb, bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')  # progress bar
         optimizer.zero_grad()
-        for i, (imgs, targets, paths, shapes, gt_class) in pbar:  # batch -------------------------------------------------------------
+        for i, (imgs, targets_det, paths, shapes, targets_cls) in pbar:  # batch -------------------------------
             # print('img shape: ', imgs.shape) # [batch_size, 3, height_img, width_img]
-            print('\n')
-            print('targets shape: ', targets.shape) # torch.Size([204, 6])
-            print('gtclass shape', len(gt_class))
+            #print('\n')
+            #print('targets shape: ', targets_det.shape) # torch.Size([204, 6])
+            # TODO check if targets_cls is a tensor (should be)
+            #print('gtclass shape', len(targets_cls))
             # print('path'), paths
             callbacks.run('on_train_batch_start')
             ni = i + nb * epoch  # number integrated batches (since train start)
@@ -381,14 +385,22 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             # Forward
             with torch.cuda.amp.autocast(amp):
                 pred = model(imgs)  # forward
-                loss, loss_items = compute_loss(pred, targets.to(device))  # loss scaled by batch_size
+                loss_det, loss_cls, loss_items_det, loss_items_cls = compute_loss(pred, targets_det.to(device), targets_cls.to(device)) #loss scaled by batch_size
+                loss_total = loss_det + loss_cls
+                loss_items = torch.cat((loss_items_det, loss_items_cls.reshape(1)), dim=0)
+                # TODO change this number 4, depends on the number of classification heads
+                assert loss_items.shape[0] == 4
+
                 if RANK != -1:
-                    loss *= WORLD_SIZE  # gradient averaged between devices in DDP mode
+                    # TODO verify this
+                    loss_total *= WORLD_SIZE  # gradient averaged between devices in DDP mode
+
                 if opt.quad:
-                    loss *= 4.
+                    # TODO verify this
+                    loss_total *= 4.
 
             # Backward
-            scaler.scale(loss).backward()
+            scaler.scale(loss_total).backward()
 
             # Optimize
             if ni - last_opt_step >= accumulate:
@@ -403,9 +415,10 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             if RANK in {-1, 0}:
                 mloss = (mloss * i + loss_items) / (i + 1)  # update mean losses
                 mem = f'{torch.cuda.memory_reserved() / 1E9 if torch.cuda.is_available() else 0:.3g}G'  # (GB)
-                pbar.set_description(('%10s' * 2 + '%10.4g' * 5) %
-                                     (f'{epoch}/{epochs - 1}', mem, *mloss, targets.shape[0], imgs.shape[-1]))
-                callbacks.run('on_train_batch_end', ni, model, imgs, targets, paths, plots)
+                # TODO add targets_cls in the pbar and callbacks
+                pbar.set_description(('%10s' * 2 + '%10.4g' * 6) %
+                                     (f'{epoch}/{epochs - 1}', mem, *mloss, targets_det.shape[0], imgs.shape[-1]))
+                callbacks.run('on_train_batch_end', ni, model, imgs, targets_det, paths, plots)
                 if callbacks.stop_training:
                     return
             # end batch ------------------------------------------------------------------------------------------------
@@ -512,7 +525,7 @@ def parse_opt(known=False):
     parser.add_argument('--data', type=str, default=ROOT / 'data/multitasks.yaml', help='dataset.yaml path')
     parser.add_argument('--hyp', type=str, default=ROOT / 'data/hyps/hyp.scratch-low.yaml', help='hyperparameters path')
     parser.add_argument('--epochs', type=int, default=2)
-    parser.add_argument('--batch-size', type=int, default=32, help='total batch size for all GPUs, -1 for autobatch')
+    parser.add_argument('--batch-size', type=int, default=16, help='total batch size for all GPUs, -1 for autobatch')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='train, val image size (pixels)')
     parser.add_argument('--rect', action='store_true', help='rectangular training')
     parser.add_argument('--resume', nargs='?', const=True, default=False, help='resume most recent training')
@@ -537,9 +550,19 @@ def parse_opt(known=False):
     parser.add_argument('--cos-lr', action='store_true', help='cosine LR scheduler')
     parser.add_argument('--label-smoothing', type=float, default=0.0, help='Label smoothing epsilon')
     parser.add_argument('--patience', type=int, default=100, help='EarlyStopping patience (epochs without improvement)')
+    # TODO as an experiment: freeze the new layers (classification head)
     parser.add_argument('--freeze', nargs='+', type=int, default=[0], help='Freeze layers: backbone=10, first3=0 1 2')
     parser.add_argument('--save-period', type=int, default=-1, help='Save checkpoint every x epochs (disabled if < 1)')
     parser.add_argument('--local_rank', type=int, default=-1, help='DDP parameter, do not modify')
+
+    # Multi-tasks arguments
+    # TODO later (once the model performs multitasks) adapt the architecture, losses, etc based on the following arg
+    parser.add_argument('--num_cls_tasks', type=int, default=1,
+                        help='The number of classification tasks to perform.')
+    parser.add_argument('--cls-train-file', type=str, default=ROOT / 'data/gt_class_train.csv',
+                        help="Scene labels path for train set (csv)")
+    parser.add_argument('--cls-val-file', type=str, default=ROOT / 'data/gt_class_val.csv',
+                        help="Scene labels path for val set (csv)")
 
     # Weights & Biases arguments
     parser.add_argument('--entity', default=None, help='W&B: Entity')

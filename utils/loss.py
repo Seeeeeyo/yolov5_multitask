@@ -100,35 +100,62 @@ class ComputeLoss:
         BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['cls_pw']], device=device))
         BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['obj_pw']], device=device))
 
+        CEloss = nn.CrossEntropyLoss()
+
         # Class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
         self.cp, self.cn = smooth_BCE(eps=h.get('label_smoothing', 0.0))  # positive, negative BCE targets
+        # TODO ? Label smoothing for new cls
 
         # Focal loss
         g = h['fl_gamma']  # focal loss gamma
         if g > 0:
             BCEcls, BCEobj = FocalLoss(BCEcls, g), FocalLoss(BCEobj, g)
+            # TODO ? Add focal loss
+            # BCEcls_2 = FocalLoss(BCEcls_2, g)
 
         m = de_parallel(model).model[-1]  # Detect() module
         self.balance = {3: [4.0, 1.0, 0.4]}.get(m.nl, [4.0, 1.0, 0.25, 0.06, 0.02])  # P3-P7
         self.ssi = list(m.stride).index(16) if autobalance else 0  # stride 16 index
         self.BCEcls, self.BCEobj, self.gr, self.hyp, self.autobalance = BCEcls, BCEobj, 1.0, h, autobalance
+        self.CEloss = CEloss
         self.na = m.na  # number of anchors
         self.nc = m.nc  # number of classes
         self.nl = m.nl  # number of layers
-        print('num of layers', self.nl)
+        #print('num of layers', self.nl)
         self.anchors = m.anchors
         self.device = device
 
-    def __call__(self, p, targets):  # predictions, targets
-        lcls = torch.zeros(1, device=self.device)  # class loss
+    def __call__(self, preds, targets_det, targets_cls):  # predictions, detection targets, classification targets
+        # TODO verify this and adapt the model(input) return format if needed
+        (det_pred, cls_pred) = preds
+        # detection losses
+        lcls = torch.zeros(1, device=self.device)  # class loss (object detector)
         lbox = torch.zeros(1, device=self.device)  # box loss
         lobj = torch.zeros(1, device=self.device)  # object loss
-        tcls, tbox, indices, anchors = self.build_targets(p, targets)  # targets
 
-        # Losses
-        for i, pi in enumerate(p):  # layer index, layer predictions
+        # TODO delete the next 2 lines if not needed. I don't think they're useful but to check if that works without it
+        # classification losses
+        # lcls_mtl = torch.zeros(1, device=self.device)  # class loss (scene classification)
+
+        tcls, tbox, indices, anchors = self.build_targets(det_pred, targets_det)  # targets
+
+
+        # Scene classification loss (for 1 classification now, will extend it later)
+        # cls_pred_soft = torch.sigmoid(cls_pred)
+        #print('cls_pred_soft', cls_pred_soft.shape)
+        #print('pred shape', cls_pred.shape)
+        #print('pred', cls_pred)
+        #print('targets shape', targets_cls.shape)
+        #print('targets', targets_cls)
+
+        lcls_mtl = self.CEloss(cls_pred, targets_cls)
+        #print('classification head loss:', lcls_mtl)
+
+        # Object detection Losses
+        for i, pi in enumerate(det_pred):  # layer index, layer predictions
             b, a, gj, gi = indices[i]  # image, anchor, gridy, gridx
             tobj = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)  # target obj
+
 
             n = b.shape[0]  # number of targets
             if n:
@@ -165,7 +192,6 @@ class ComputeLoss:
             lobj += obji * self.balance[i]  # obj loss
             if self.autobalance:
                 self.balance[i] = self.balance[i] * 0.9999 + 0.0001 / obji.detach().item()
-
         if self.autobalance:
             self.balance = [x / self.balance[self.ssi] for x in self.balance]
         lbox *= self.hyp['box']
@@ -173,7 +199,10 @@ class ComputeLoss:
         lcls *= self.hyp['cls']
         bs = tobj.shape[0]  # batch size
 
-        return (lbox + lobj + lcls) * bs, torch.cat((lbox, lobj, lcls)).detach()
+        #print('lcls_mtl', lcls_mtl)
+        # TODO check if the lcls_mtl has to be multiplied by "bs" as the other losses or not
+        # TODO verify if the cat works (night not due to the different shapes)
+        return (lbox + lobj + lcls) * bs, lcls_mtl*bs, torch.cat((lbox, lobj, lcls)).detach(), lcls_mtl.detach()
 
     def build_targets(self, p, targets):
         # Build targets for compute_loss(), input targets(image,class,x,y,w,h)
