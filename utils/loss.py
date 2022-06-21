@@ -129,35 +129,27 @@ class ComputeLoss:
         # TODO verify this and adapt the model(input) return format if needed
         (det_pred, cls_pred) = preds
         # detection losses
-        lcls = torch.zeros(1, device=self.device)  # class loss (object detector)
+        lcls = torch.zeros(1, device=self.device)  # classif loss (object detector)
         lbox = torch.zeros(1, device=self.device)  # box loss
         lobj = torch.zeros(1, device=self.device)  # object loss
 
-        # TODO delete the next 2 lines if not needed. I don't think they're useful but to check if that works without it
-        # classification losses
-        # lcls_mtl = torch.zeros(1, device=self.device)  # class loss (scene classification)
-
+        # Useless for now
+        #lcls_mtl = torch.zeros(1, device= self.device) # classif loss
         tcls, tbox, indices, anchors = self.build_targets(det_pred, targets_det)  # targets
 
-
         # Scene classification loss (for 1 classification now, will extend it later)
-        # cls_pred_soft = torch.sigmoid(cls_pred)
-        #print('cls_pred_soft', cls_pred_soft.shape)
-        #print('pred shape', cls_pred.shape)
-        #print('pred', cls_pred)
-        #print('targets shape', targets_cls.shape)
-        #print('targets', targets_cls)
-
+        # lcls_mtl = torch.zeros(1, device=self.device)  # class loss (scene classification)
         lcls_mtl = self.CEloss(cls_pred, targets_cls)
-        #print('classification head loss:', lcls_mtl)
 
         # Object detection Losses
         for i, pi in enumerate(det_pred):  # layer index, layer predictions
+            # print('pi.shape', pi.shape)
             b, a, gj, gi = indices[i]  # image, anchor, gridy, gridx
             tobj = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)  # target obj
 
 
             n = b.shape[0]  # number of targets
+            # print("number of targets", n)
             if n:
                 # pxy, pwh, _, pcls = pi[b, a, gj, gi].tensor_split((2, 4, 5), dim=1)  # faster, requires torch 1.8.0
                 pxy, pwh, _, pcls = pi[b, a, gj, gi].split((2, 2, 1, self.nc), 1)  # target-subset of predictions
@@ -224,8 +216,11 @@ class ComputeLoss:
             ],
             device=self.device).float() * g  # offsets
 
+        # print("nl", self.nl)
         for i in range(self.nl):
+
             anchors, shape = self.anchors[i], p[i].shape
+            # print(i, "-- p[i].shape", p[i].shape)
             gain[2:6] = torch.tensor(shape)[[3, 2, 3, 2]]  # xyxy gain
 
             # Match targets to anchors

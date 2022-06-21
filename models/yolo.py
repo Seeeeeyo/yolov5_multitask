@@ -176,7 +176,7 @@ class Model(nn.Module):
             if m.i == 29:
                 pred_det = x
 
-        return pred_det, pred_cls
+        return (pred_det, pred_cls)
 
     def _descale_pred(self, p, flips, scale, img_size):
         # de-scale predictions following augmented inference (inverse operation)

@@ -316,6 +316,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     last_opt_step = -1
     maps = np.zeros(nc)  # mAP per class
     results = (0, 0, 0, 0, 0, 0, 0, 0)  # P, R, mAP@.5, mAP@.5-.95, val_loss(box, obj, cls_det, class_new)
+    results_cls = (0,0) # accuracy and f1_macro scores
     scheduler.last_epoch = start_epoch - 1  # do not move
     scaler = torch.cuda.amp.GradScaler(enabled=amp)
     stopper = EarlyStopping(patience=opt.patience)
@@ -347,13 +348,16 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         if RANK in {-1, 0}:
             pbar = tqdm(pbar, total=nb, bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')  # progress bar
         optimizer.zero_grad()
+        recall_cls_ep = []
+        f1_cls_ep = []
+        precis_cls_ep = []
+        acc_cls_ep = []
+
         for i, (imgs, targets_det, paths, shapes, targets_cls) in pbar:  # batch -------------------------------
             # print('img shape: ', imgs.shape) # [batch_size, 3, height_img, width_img]
             #print('\n')
             #print('targets shape: ', targets_det.shape) # torch.Size([204, 6])
-            # TODO check if targets_cls is a tensor (should be)
             #print('gtclass shape', len(targets_cls))
-            # print('path'), paths
             callbacks.run('on_train_batch_start')
             ni = i + nb * epoch  # number integrated batches (since train start)
             imgs = imgs.to(device, non_blocking=True).float() / 255  # uint8 to float32, 0-255 to 0.0-1.0
@@ -385,11 +389,24 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             # Forward
             with torch.cuda.amp.autocast(amp):
                 pred = model(imgs)  # forward
+                # print("targets_det training", targets_det.shape)
                 loss_det, loss_cls, loss_items_det, loss_items_cls = compute_loss(pred, targets_det.to(device), targets_cls.to(device)) #loss scaled by batch_size
                 loss_total = loss_det + loss_cls
                 loss_items = torch.cat((loss_items_det, loss_items_cls.reshape(1)), dim=0)
                 # TODO change this number 4, depends on the number of classification heads
                 assert loss_items.shape[0] == 4
+
+                # classification metrics
+                import sklearn.metrics as met
+                pred_cls_logs = torch.softmax(pred[1].detach(), dim=0)
+                ped_cls_maxs = torch.max(pred_cls_logs, dim=1)
+                pred_max_ind_np = ped_cls_maxs.indices.numpy()
+                pred_max_log_np = ped_cls_maxs.values.numpy()
+                targets_cls_np = targets_cls.data.cpu().numpy()
+                acc_cls_ep.append(met.accuracy_score(targets_cls_np, pred_max_ind_np))
+                recall_cls_ep.append(met.recall_score(targets_cls_np, pred_max_ind_np, average='macro'))
+                f1_cls_ep.append(met.f1_score(targets_cls_np, pred_max_ind_np, average='macro'))
+                precis_cls_ep.append(met.precision_score(targets_cls_np, pred_max_ind_np, average='macro'))
 
                 if RANK != -1:
                     # TODO verify this
@@ -423,6 +440,12 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                     return
             # end batch ------------------------------------------------------------------------------------------------
 
+        # classification metrics per epoch
+        acc_cls = sum(acc_cls_ep)/len(acc_cls_ep)
+        pr_cls = sum(precis_cls_ep) / len(precis_cls_ep)
+        f1_cls = sum(f1_cls_ep) / len(f1_cls_ep)
+        recall_cls = sum(recall_cls_ep) / len(recall_cls_ep)
+
         # Scheduler
         lr = [x['lr'] for x in optimizer.param_groups]  # for loggers
         scheduler.step()
@@ -448,7 +471,9 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
             if fi > best_fitness:
                 best_fitness = fi
-            log_vals = list(mloss) + list(results) + lr
+            cls_train_metrics = [acc_cls, recall_cls, f1_cls]
+            log_vals = list(mloss) + list(results) + cls_train_metrics + lr  # i=11 and i=3 are cls
+            # print("log_vals", log_vals)
             callbacks.run('on_fit_epoch_end', log_vals, epoch, best_fitness, fi)
 
             # Save model
@@ -524,7 +549,7 @@ def parse_opt(known=False):
     parser.add_argument('--cfg', type=str, default='yolov5s_avgpool_all_fm.yaml', help='model.yaml path')
     parser.add_argument('--data', type=str, default=ROOT / 'data/multitasks.yaml', help='dataset.yaml path')
     parser.add_argument('--hyp', type=str, default=ROOT / 'data/hyps/hyp.scratch-low.yaml', help='hyperparameters path')
-    parser.add_argument('--epochs', type=int, default=2)
+    parser.add_argument('--epochs', type=int, default=20)
     parser.add_argument('--batch-size', type=int, default=16, help='total batch size for all GPUs, -1 for autobatch')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='train, val image size (pixels)')
     parser.add_argument('--rect', action='store_true', help='rectangular training')
@@ -721,6 +746,13 @@ def run(**kwargs):
 
 if __name__ == "__main__":
     opt = parse_opt()
-
+    path_train = '/Users/selimgilon/Library/Mobile Documents/com~apple~CloudDocs/Desktop/Montreal/UdeM/Internship/E-Smart/code/yolov5_multitask/data/multitasks/esmart_wip/train.cache'
+    path_val = '/Users/selimgilon/Library/Mobile Documents/com~apple~CloudDocs/Desktop/Montreal/UdeM/Internship/E-Smart/code/yolov5_multitask/data/multitasks/esmart_wip/val.cache'
+    if os.path.exists(path_train):
+        os.remove(path_train)
+        print("train cache deleted")
+    if os.path.exists(path_val):
+        os.remove(path_val)
+        print("val cache deleted")
     main(opt)
 

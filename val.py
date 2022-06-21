@@ -125,6 +125,7 @@ def run(
 ):
     # Initialize/load model and set device
     training = model is not None
+    # print("training", training)
     if training:  # called by train.py
         device, pt, jit, engine = next(model.parameters()).device, True, False, False  # get model device, PyTorch model
         half &= device.type != 'cpu'  # half precision only supported on CUDA
@@ -184,18 +185,27 @@ def run(
     confusion_matrix = ConfusionMatrix(nc=nc)
     names = {k: v for k, v in enumerate(model.names if hasattr(model, 'names') else model.module.names)}
     class_map = coco80_to_coco91_class() if is_coco else list(range(1000))
-    s = ('%20s' + '%11s' * 6) % ('Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95')
+    s = ('%20s' + '%11s' * 10) % ('Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95',
+                                 'cls_Labels', 'cls_P', 'cls_R', 'cls_f1',)
+    # detection
     dt, p, r, f1, mp, mr, map50, map = [0.0, 0.0, 0.0], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-    loss = torch.zeros(3, device=device)
+    # classification (new head)
+    recall_cls_ep = []
+    f1_cls_ep = []
+    precis_cls_ep = []
+    acc_cls_ep = []
+
+    loss_det = torch.zeros(3, device=device)
+    loss_cls = torch.zeros(1, device=device)
     jdict, stats, ap, ap_class = [], [], [], []
     callbacks.run('on_val_start')
     pbar = tqdm(dataloader, desc=s, bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')  # progress bar
-    for batch_i, (im, targets, paths, shapes) in enumerate(pbar):
+    for batch_i, (im, targets_det, paths, shapes, targets_cls) in enumerate(pbar):
         callbacks.run('on_val_batch_start')
         t1 = time_sync()
         if cuda:
             im = im.to(device, non_blocking=True)
-            targets = targets.to(device)
+            targets_det = targets_det.to(device)
         im = im.half() if half else im.float()  # uint8 to fp16/32
         im /= 255  # 0 - 255 to 0.0 - 1.0
         nb, _, height, width = im.shape  # batch size, channels, height, width
@@ -203,25 +213,55 @@ def run(
         dt[0] += t2 - t1
 
         # Inference
-        out, train_out = model(im) if training else model(im, augment=augment, val=True)  # inference, loss outputs
+        output = model(im) if training else model(im, augment=augment, val=True)
+        pred_det_layers_out = output[0][1]
+        pred_det = output[0][0]
+        pred_cls = output[1]
+        # print('im.shape', im.shape)
+        # pred = model(im, augment=augment, val=True)
+        # print('pred length', len(pred_cls))
         dt[1] += time_sync() - t2
-
         # Loss
+        # print('targets_det', targets_det.shape)
+        # print('targets_cls', targets_cls.shape)
+
         if compute_loss:
-            loss += compute_loss([x.float() for x in train_out], targets)[1]  # box, obj, cls
-           # assert loss[0].shape[0] == 3 # for now, should nbe 4 when multiclass
-            # print('val loss:', loss)
+            #loss_det_it, loss_cls_it, loss_items_det_it, loss_items_cls_it = compute_loss(pred, targets_det.to(device), targets_cls.to(device))  #
+            #loss = compute_loss((pred, targets_det.to(device), targets_cls.to(device))
+            #loss_det += loss_items_det_it
+            #loss_cls += loss_items_cls_it
+            #val_loss_total = loss_det + loss_cls
+            #loss_items = torch.cat((loss_items_det_it, loss_items_cls_it.reshape(1)), dim=0)
+            #print('val loss:', val_loss_total)
+            loss = compute_loss(([x.float() for x in pred_det_layers_out], pred_cls), targets_det.to(device), targets_cls.to(device))
+            loss_det += loss[2]
+            loss_cls += loss[3]
+            val_loss_total = torch.cat((loss_det, loss_cls.reshape(1)), dim=0)
+            # print('val loss:', val_loss_total)
+
+        # classification metrics
+        import sklearn.metrics as met
+        pred_cls_logs = torch.softmax(pred_cls.data.detach(), dim=0)
+        ped_cls_maxs = torch.max(pred_cls_logs, dim=1)
+        pred_max_ind_np = ped_cls_maxs.indices.numpy()
+        pred_max_log_np = ped_cls_maxs.values.numpy()
+        targets_cls_np = targets_cls.data.cpu().numpy()
+        acc_cls_ep.append(met.accuracy_score(targets_cls_np, pred_max_ind_np))
+        recall_cls_ep.append(met.recall_score(targets_cls_np, pred_max_ind_np, average='macro'))
+        f1_cls_ep.append(met.f1_score(targets_cls_np, pred_max_ind_np, average='macro'))
+        precis_cls_ep.append(met.precision_score(targets_cls_np, pred_max_ind_np, average='macro'))
 
         # NMS
-        targets[:, 2:] *= torch.tensor((width, height, width, height), device=device)  # to pixels
-        lb = [targets[targets[:, 0] == i, 1:] for i in range(nb)] if save_hybrid else []  # for autolabelling
+        targets_det[:, 2:] *= torch.tensor((width, height, width, height), device=device)  # to pixels
+        lb = [targets_det[targets_det[:, 0] == i, 1:] for i in range(nb)] if save_hybrid else []  # for autolabelling
         t3 = time_sync()
-        out = non_max_suppression(out, conf_thres, iou_thres, labels=lb, multi_label=True, agnostic=single_cls)
+        out_det = non_max_suppression(pred_det, conf_thres, iou_thres, labels=lb, multi_label=True, agnostic=single_cls)
         dt[2] += time_sync() - t3
 
         # Metrics
-        for si, pred in enumerate(out):
-            labels = targets[targets[:, 0] == si, 1:]
+        for si, pred in enumerate(out_det):
+            # print("si", si, " --- pred", pred, " --- out", out_det)
+            labels = targets_det[targets_det[:, 0] == si, 1:]
             nl, npr = labels.shape[0], pred.shape[0]  # number of labels, predictions
             # print('npr', npr)
             # print('nl', nl)
@@ -259,12 +299,12 @@ def run(
 
         # Plot images
         if plots and batch_i < 3:
-            plot_images(im, targets, paths, save_dir / f'val_batch{batch_i}_labels.jpg', names)  # labels
-            plot_images(im, output_to_target(out), paths, save_dir / f'val_batch{batch_i}_pred.jpg', names)  # pred
+            plot_images(im, targets_det, paths, save_dir / f'val_batch{batch_i}_labels.jpg', names)  # labels
+            plot_images(im, output_to_target(out_det), paths, save_dir / f'val_batch{batch_i}_pred.jpg', names)  # pred
 
         callbacks.run('on_val_batch_end')
 
-    # Compute metrics
+    # Compute detection metrics
     stats = [torch.cat(x, 0).cpu().numpy() for x in zip(*stats)]  # to numpy
     if len(stats) and stats[0].any():
         tp, fp, p, r, f1, ap, ap_class = ap_per_class(*stats, plot=plots, save_dir=save_dir, names=names)
@@ -274,9 +314,15 @@ def run(
     else:
         nt = torch.zeros(1)
 
+    # Compute classification metrics per epoch
+    acc_cls = sum(acc_cls_ep) / len(acc_cls_ep)
+    pr_cls = sum(precis_cls_ep) / len(precis_cls_ep)
+    f1_cls = sum(f1_cls_ep) / len(f1_cls_ep)
+    recall_cls = sum(recall_cls_ep) / len(recall_cls_ep)
+
     # Print results
-    pf = '%20s' + '%11i' * 2 + '%11.3g' * 4  # print format
-    LOGGER.info(pf % ('all', seen, nt.sum(), mp, mr, map50, map))
+    pf = '%20s' + '%11i' * 2 + '%11.3g' * 4 + '%11i' * 3 # print format
+    LOGGER.info(pf % ('all', seen, nt.sum(), mp, mr, map50, map, pr_cls, recall_cls, f1_cls))
 
     # Print results per class
     if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
@@ -328,7 +374,8 @@ def run(
     maps = np.zeros(nc) + map
     for i, c in enumerate(ap_class):
         maps[c] = ap[i]
-    return (mp, mr, map50, map, *(loss.cpu() / len(dataloader)).tolist()), maps, t
+
+    return (mp, mr, map50, map, *(val_loss_total.cpu() / len(dataloader)).tolist()), maps, t
 
 
 def parse_opt():
