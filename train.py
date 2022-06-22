@@ -30,6 +30,7 @@ import yaml
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import SGD, Adam, AdamW, lr_scheduler
 from tqdm import tqdm
+import sklearn.metrics as met
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLOv5 root directory
@@ -62,11 +63,12 @@ WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))
 
 
 def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictionary
-    save_dir, epochs, batch_size, weights, single_cls, evolve, data, cfg, resume, noval, nosave, workers, freeze = \
+    save_dir, epochs, batch_size, weights, single_cls, evolve, data, cfg, resume, noval, nosave, workers, freeze, train_csv, val_csv = \
         Path(opt.save_dir), opt.epochs, opt.batch_size, opt.weights, opt.single_cls, opt.evolve, opt.data, opt.cfg, \
-        opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze
+        opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze, opt.cls_train, opt.cls_val
     callbacks.run('on_pretrain_routine_start')
 
+    print("save dir", save_dir)
     # Directories
     w = save_dir / 'weights'  # weights dir
     (w.parent if evolve else w).mkdir(parents=True, exist_ok=True)  # make dir
@@ -79,14 +81,15 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     LOGGER.info(colorstr('hyperparameters: ') + ', '.join(f'{k}={v}' for k, v in hyp.items()))
 
     # Save run settings
-    # TODO uncomment this and trace the error
-    """
     if not evolve:
         with open(save_dir / 'hyp.yaml', 'w') as f:
             yaml.safe_dump(hyp, f, sort_keys=False)
         with open(save_dir / 'opt.yaml', 'w') as f:
+            # conversion from PosixPath to string to be able to dump it into a yaml
+            opt.cls_train = str(opt.cls_train)
+            opt.cls_val = str(opt.cls_val)
             yaml.safe_dump(vars(opt), f, sort_keys=False)
-    """
+
 
     # Loggers
     data_dict = None
@@ -131,8 +134,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         model = Model(cfg, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
     amp = check_amp(model)  # check AMP
 
-    # summary(model, input_size=(3,512,512), batch_size=1, device='cuda')
-
     # Freeze
     freeze = [f'model.{x}.' for x in (freeze if len(freeze) > 1 else range(freeze[0]))]  # layers to freeze
     for k, v in model.named_parameters():
@@ -144,9 +145,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     # Image size
     try:
         stri = max(int(model.stride.max()))
-        # print(model.stride)
     except:
-        # print('no gs')
         stri=0
 
     gs = max(stri, 32)  # grid size (max stride)
@@ -156,6 +155,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     # Batch size
     if RANK == -1 and batch_size == -1:  # single-GPU only, estimate best batch size
         print('batch_size', batch_size)
+        assert batch_size % 2 == 0
         batch_size = check_train_batch_size(model, imgsz, amp)
         loggers.on_params_update({"batch_size": batch_size})
 
@@ -237,6 +237,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                               imgsz,
                                               batch_size // WORLD_SIZE,
                                               gs,
+                                              opt.cls_train,
+                                              opt.cls_val,
                                               single_cls,
                                               hyp=hyp,
                                               augment=True,
@@ -250,7 +252,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                               shuffle=True)
 
     mlc = int(np.concatenate(dataset.labels, 0)[:, 0].max())  # max label class
-    print('max label class', mlc)
     nb = len(train_loader)  # number of batches
     print('number of batches:', nb)
     assert mlc < nc, f'Label class {mlc} exceeds nc={nc} in {data}. Possible class labels are 0-{nc - 1}'
@@ -261,6 +262,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                        imgsz,
                                        batch_size // WORLD_SIZE * 2,
                                        gs,
+                                       opt.cls_train,
+                                       opt.cls_val,
                                        single_cls,
                                        hyp=hyp,
                                        cache=None if noval else opt.cache,
@@ -361,11 +364,9 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             callbacks.run('on_train_batch_start')
             ni = i + nb * epoch  # number integrated batches (since train start)
             imgs = imgs.to(device, non_blocking=True).float() / 255  # uint8 to float32, 0-255 to 0.0-1.0
-            # print(imgs.shape)
-            # assert batch_size == imgs.shape[0]
-            # assert imgs.shape[1] == 3
-            # assert imgs.shape[2] == imgsz
-            # assert imgs.shape[3] == imgsz
+            assert batch_size == imgs.shape[0]
+            assert imgs.shape[1] == 3  # RGB
+            assert imgs.shape[2] == imgs.shape[3] == imgsz
 
             # Warmup
             if ni <= nw:
@@ -393,27 +394,28 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 loss_det, loss_cls, loss_items_det, loss_items_cls = compute_loss(pred, targets_det.to(device), targets_cls.to(device)) #loss scaled by batch_size
                 loss_total = loss_det + loss_cls
                 loss_items = torch.cat((loss_items_det, loss_items_cls.reshape(1)), dim=0)
-                # TODO change this number 4, depends on the number of classification heads
+                # TODO change this number 4 once we add more classification heads
                 assert loss_items.shape[0] == 4
 
                 # classification metrics
-                import sklearn.metrics as met
                 pred_cls_logs = torch.softmax(pred[1].detach(), dim=0)
                 ped_cls_maxs = torch.max(pred_cls_logs, dim=1)
                 pred_max_ind_np = ped_cls_maxs.indices.numpy()
                 pred_max_log_np = ped_cls_maxs.values.numpy()
                 targets_cls_np = targets_cls.data.cpu().numpy()
+                class_pred_count = np.bincount(pred_max_ind_np)
+                class_target_count = np.bincount(targets_cls_np)
+                # print("Preds count:",class_pred_count, "-- targets count:",class_target_count)  # to see the distribution of pred and targets classes
+                # assert np.array_equal(unique_targets, unique_preds) #if we want to check that all different classes are predicted
                 acc_cls_ep.append(met.accuracy_score(targets_cls_np, pred_max_ind_np))
-                recall_cls_ep.append(met.recall_score(targets_cls_np, pred_max_ind_np, average='macro'))
-                f1_cls_ep.append(met.f1_score(targets_cls_np, pred_max_ind_np, average='macro'))
+                recall_cls_ep.append(met.recall_score(targets_cls_np, pred_max_ind_np, average='macro', zero_division=1))
+                f1_cls_ep.append(met.f1_score(targets_cls_np, pred_max_ind_np, average='macro',  zero_division=1))
                 precis_cls_ep.append(met.precision_score(targets_cls_np, pred_max_ind_np, average='macro'))
 
                 if RANK != -1:
-                    # TODO verify this
                     loss_total *= WORLD_SIZE  # gradient averaged between devices in DDP mode
 
                 if opt.quad:
-                    # TODO verify this
                     loss_total *= 4.
 
             # Backward
@@ -432,7 +434,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             if RANK in {-1, 0}:
                 mloss = (mloss * i + loss_items) / (i + 1)  # update mean losses
                 mem = f'{torch.cuda.memory_reserved() / 1E9 if torch.cuda.is_available() else 0:.3g}G'  # (GB)
-                # TODO add targets_cls in the pbar and callbacks
                 pbar.set_description(('%10s' * 2 + '%10.4g' * 6) %
                                      (f'{epoch}/{epochs - 1}', mem, *mloss, targets_det.shape[0], imgs.shape[-1]))
                 callbacks.run('on_train_batch_end', ni, model, imgs, targets_det, paths, plots)
@@ -472,7 +473,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             if fi > best_fitness:
                 best_fitness = fi
             cls_train_metrics = [acc_cls, recall_cls, f1_cls]
-            log_vals = list(mloss) + list(results) + cls_train_metrics + lr  # i=11 and i=3 are cls
+            log_vals = list(mloss) + list(results) + cls_train_metrics + lr  # i=11 and i=3 are cls values
             # print("log_vals", log_vals)
             callbacks.run('on_fit_epoch_end', log_vals, epoch, best_fitness, fi)
 
@@ -549,7 +550,7 @@ def parse_opt(known=False):
     parser.add_argument('--cfg', type=str, default='yolov5s_avgpool_all_fm.yaml', help='model.yaml path')
     parser.add_argument('--data', type=str, default=ROOT / 'data/multitasks.yaml', help='dataset.yaml path')
     parser.add_argument('--hyp', type=str, default=ROOT / 'data/hyps/hyp.scratch-low.yaml', help='hyperparameters path')
-    parser.add_argument('--epochs', type=int, default=20)
+    parser.add_argument('--epochs', type=int, default=3)
     parser.add_argument('--batch-size', type=int, default=16, help='total batch size for all GPUs, -1 for autobatch')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='train, val image size (pixels)')
     parser.add_argument('--rect', action='store_true', help='rectangular training')
@@ -582,11 +583,10 @@ def parse_opt(known=False):
 
     # Multi-tasks arguments
     # TODO later (once the model performs multitasks) adapt the architecture, losses, etc based on the following arg
-    parser.add_argument('--num_cls_tasks', type=int, default=1,
-                        help='The number of classification tasks to perform.')
-    parser.add_argument('--cls-train-file', type=str, default=ROOT / 'data/gt_class_train.csv',
+    parser.add_argument('--num_cls_tasks', type=int, default=1, help='The number of classification tasks to perform.')
+    parser.add_argument('--cls_train', type=str, default=ROOT / 'data/multitasks/gt_class_train.csv',
                         help="Scene labels path for train set (csv)")
-    parser.add_argument('--cls-val-file', type=str, default=ROOT / 'data/gt_class_val.csv',
+    parser.add_argument('--cls_val', type=str, default=ROOT / 'data/multitasks/gt_class_val.csv',
                         help="Scene labels path for val set (csv)")
 
     # Weights & Biases arguments

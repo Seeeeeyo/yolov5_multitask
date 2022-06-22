@@ -32,12 +32,18 @@ from utils.general import (DATASETS_DIR, LOGGER, NUM_THREADS, check_dataset, che
                            cv2, segments2boxes, xyn2xy, xywh2xyxy, xywhn2xyxy, xyxy2xywhn)
 from utils.torch_utils import torch_distributed_zero_first
 
+# Classification parameters
+# Road Conditions
+mapping_road_cond = {'dry': 0, 'snowy': 1, 'wet': 2}
+num_class_road_cond = 3
+
 # Parameters
 HELP_URL = 'https://github.com/ultralytics/yolov5/wiki/Train-Custom-Data'
 IMG_FORMATS = 'bmp', 'dng', 'jpeg', 'jpg', 'mpo', 'png', 'tif', 'tiff', 'webp'  # include image suffixes
 VID_FORMATS = 'asf', 'avi', 'gif', 'm4v', 'mkv', 'mov', 'mp4', 'mpeg', 'mpg', 'ts', 'wmv'  # include video suffixes
 BAR_FORMAT = '{l_bar}{bar:10}{r_bar}{bar:-10b}'  # tqdm bar format
 LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable/elastic/run.html
+
 
 # Get orientation exif tag
 for orientation in ExifTags.TAGS.keys():
@@ -96,6 +102,8 @@ def create_dataloader(path,
                       imgsz,
                       batch_size,
                       stride,
+                      train_csv,
+                      val_csv,
                       single_cls=False,
                       hyp=None,
                       augment=False,
@@ -114,6 +122,8 @@ def create_dataloader(path,
     with torch_distributed_zero_first(rank):  # init dataset *.cache only once if DDP
         dataset = LoadImagesAndLabelsAndClasses(
             path,
+            train_csv,
+            val_csv,
             imgsz,
             batch_size,
             augment=augment,  # augmentation
@@ -393,6 +403,7 @@ def img2label_paths(img_paths):
     sa, sb = f'{os.sep}images{os.sep}', f'{os.sep}labels{os.sep}'  # /images/, /labels/ substrings
     return [sb.join(x.rsplit(sa, 1)).rsplit('.', 1)[0] + '.txt' for x in img_paths]
 
+
 class LoadImagesAndLabelsAndClasses(Dataset):
     # YOLOv5 train_loader/val_loader, loads images and labels for training and validation
     cache_version = 0.6  # dataset labels *.cache version
@@ -400,6 +411,8 @@ class LoadImagesAndLabelsAndClasses(Dataset):
 
     def __init__(self,
                  path,
+                 train_csv,
+                 val_csv,
                  img_size=640,
                  batch_size=16,
                  augment=False,
@@ -410,7 +423,7 @@ class LoadImagesAndLabelsAndClasses(Dataset):
                  single_cls=False,
                  stride=32,
                  pad=0.0,
-                 prefix=''):
+                 prefix='',):
         self.img_size = img_size
         self.augment = augment
         self.hyp = hyp
@@ -421,6 +434,8 @@ class LoadImagesAndLabelsAndClasses(Dataset):
         self.stride = stride
         self.path = path
         self.albumentations = Albumentations() if augment else None
+        self.train_csv = train_csv
+        self.val_csv = val_csv
 
         try:
             f = []  # image files
@@ -558,26 +573,41 @@ class LoadImagesAndLabelsAndClasses(Dataset):
 
         pbar.close()
 
+        # verify that the classification labels files are csv ones
+        assert self.train_csv.split('.')[-1] == 'csv'
+        assert self.val_csv.split('.')[-1] == 'csv'
         # load the csv files for the classes and add the classes to the x dictionnary (as the 3rd element of the list)
-        PATH_CSV = 'data/multitasks/gt_class_train.csv'
+        gt_cls = self.train_csv
         if self.path.split('/')[-1].__contains__('val'):
-            PATH_CSV = 'data/multitasks/gt_class_val.csv'
-        classes_df = pd.read_csv(PATH_CSV)
-        # TODO change the value of na! Actually, deal with na before training
-        mapping = {'dry': 0, 'snowy': 1, 'wet': 2, 'na': 0}
+            gt_cls = self.val_csv
+        classes_df = pd.read_csv(gt_cls)
+        assert classes_df.shape[1] == 2  # 2 columns, 1st one is the image path and the second one is the ground truth class
+        count_na = 0
         for key in x.keys():
-            # print(key)
             img_name = key.split('/')[-1]
             try:
                 row = classes_df.loc[classes_df['img'] == img_name]
-                # print('row', row)
                 road_cond_class = list(row.road_cond)[0]
+            # except:
+            #     road_cond_class = 'na'
+            #     count_na += 1
+            except Exception as e:
+                raise Exception("A 'na' value is in the classification label file (csv)."
+                                "The dataloader doesn't handle these.")
 
-            except:
-                road_cond_class = 'na'
-            #print("road_cond_class", road_cond_class)
-            x[key].append(mapping[road_cond_class])
+            x[key].append(mapping_road_cond[road_cond_class])
 
+        assert count_na == 0  # number of na values in the ground truth labels
+
+        class_targets_arr = []
+        for value in x.values():
+            road_cond = value[3]
+            class_targets_arr.append(road_cond)
+            assert road_cond in range(num_class_road_cond)  #make sure that the ground truth classes in the dataloader are in the range of the total number of classes
+
+        for value in mapping_road_cond.values():
+            count_occurrences = class_targets_arr.count(value)
+            assert count_occurrences > 0  # check that the dataset contains at least one image for each classication label
 
         if msgs:
             LOGGER.info('\n'.join(msgs))
@@ -593,17 +623,16 @@ class LoadImagesAndLabelsAndClasses(Dataset):
         assert len(data) == 4
         assert type(data[0]) is np.ndarray  # bounding boxes and labels
         assert len(data[1]) == 2  # img size
+        assert len(data[2]) == 0
+        assert type(data[3]) == int  # class label
 
         try:
-            np.save(path, x)  # save cache for next time TODO -- uncomment when done with modifying dataloader
+            np.save(path, x)  # save cache for next time
             path.with_suffix('.cache.npy').rename(path)  # remove .npy suffix
             LOGGER.info(f'{prefix}New cache created: {path}')
         except Exception as e:
             LOGGER.warning(f'{prefix}WARNING: Cache directory {path.parent} is not writeable: {e}')  # not writeable
 
-        # x is a dictionnary. Its keys are the image paths. Its values are lists.
-        # e.g list[0] = array([[         45,     0.47949,     0.68877,     0.95561,      0.5955],...], dtype=float32)
-        # e.g list[1] = (640, 480) = image size
         return x
 
     def __len__(self):
@@ -620,7 +649,6 @@ class LoadImagesAndLabelsAndClasses(Dataset):
 
         hyp = self.hyp
         mosaic = self.mosaic and random.random() < hyp['mosaic']
-        mosaic = False # TODO Remove this
         if mosaic:
             # Load mosaic
             img, labels = self.load_mosaic(index)
@@ -694,10 +722,7 @@ class LoadImagesAndLabelsAndClasses(Dataset):
         img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
         img = np.ascontiguousarray(img)
         gt_class = self.gt_classif[index]
-        #gt_class = F.one_hot(torch.tensor(gt_class), num_classes=3)
-        #print('gtclass_getitem', gt_class.shape)
-        #print('gtclass_getitem-ten', gt_class)
-        # print('type', type(gt_class))
+        assert type(gt_class) == int
         return torch.from_numpy(img), labels_out, self.im_files[index], shapes, torch.tensor(gt_class)
 
     def load_image(self, i):
@@ -861,18 +886,14 @@ class LoadImagesAndLabelsAndClasses(Dataset):
     @staticmethod
     def collate_fn(batch):
         im, label, path, shapes, gt_class = zip(*batch)  # transposed
-        # print('im', im[0])
-        # print('label', label[0])
-        # print('path', path[0])
-        # print('shape', shapes[0])
         for i, lb in enumerate(label):
             lb[:, 0] = i  # add target image index for build_targets()
-        # print('label', label)
-        return torch.stack(im, 0), torch.cat(label, 0), path, shapes, torch.stack(gt_class, 0)
+        stacked_gt_class = torch.stack(gt_class, 0)
+        assert stacked_gt_class.shape[0] == len(batch)
+        return torch.stack(im, 0), torch.cat(label, 0), path, shapes, stacked_gt_class
 
     @staticmethod
     def collate_fn4(batch):
-        #print('HERE 4')
         img, label, path, shapes = zip(*batch)  # transposed
 
         n = len(shapes) // 4
@@ -897,7 +918,6 @@ class LoadImagesAndLabelsAndClasses(Dataset):
             lb[:, 0] = i  # add target image index for build_targets()
 
         return torch.stack(im4, 0), torch.cat(label4, 0), path4, shapes4
-# - -----------------------------------------------------------------------------------------------------------------
 
 # Ancillary functions --------------------------------------------------------------------------------------------------
 def create_folder(path='./new'):
