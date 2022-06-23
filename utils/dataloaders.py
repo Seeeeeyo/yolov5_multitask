@@ -761,8 +761,9 @@ class LoadImagesAndLabelsAndClasses(Dataset):
             #     road_cond_class = 'na'
             #     count_na += 1
             except Exception as e:
+                print(img_name)
                 raise Exception(
-                    "A 'na' value is in the classification label file (csv)."
+                    "A 'na' value is in the classification label file (csv) OR a picture has no cls label."
                     "The dataloader doesn't handle these."
                 )
 
@@ -778,11 +779,12 @@ class LoadImagesAndLabelsAndClasses(Dataset):
                 num_class_road_cond
             )  # make sure that the ground truth classes in the dataloader are in the range of the total number of classes
 
-        for value in mapping_road_cond.values():
-            count_occurrences = class_targets_arr.count(value)
-            assert (
-                count_occurrences > 0
-            )  # check that the dataset contains at least one image for each classication label
+        # TODO uncomment this when swchitching back to normal dataset (not the tiny one)
+        # for value in mapping_road_cond.values():
+        #     count_occurrences = class_targets_arr.count(value)
+        #     assert (
+        #         count_occurrences > 0
+        #     )  # check that the dataset contains at least one image for each classication label
 
         if msgs:
             LOGGER.info("\n".join(msgs))

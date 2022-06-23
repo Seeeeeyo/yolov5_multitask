@@ -237,7 +237,7 @@ def run(
         )
     }
     class_map = coco80_to_coco91_class() if is_coco else list(range(1000))
-    s = ("%20s" + "%11s" * 10) % (
+    s = ("%20s" + "%11s" * 9) % (
         "Class",
         "Images",
         "Labels",
@@ -245,7 +245,6 @@ def run(
         "R",
         "mAP@.5",
         "mAP@.5:.95",
-        "cls_Labels",
         "cls_P",
         "cls_R",
         "cls_f1",
@@ -315,9 +314,9 @@ def run(
         targets_cls_np = targets_cls.data.cpu().numpy()
         acc_cls_ep.append(met.accuracy_score(targets_cls_np, pred_max_ind_np))
         recall_cls_ep.append(
-            met.recall_score(targets_cls_np, pred_max_ind_np, average="macro")
+            met.recall_score(targets_cls_np, pred_max_ind_np, average="macro", zero_division=1)
         )
-        f1_cls_ep.append(met.f1_score(targets_cls_np, pred_max_ind_np, average="macro"))
+        f1_cls_ep.append(met.f1_score(targets_cls_np, pred_max_ind_np, average="macro", zero_division=1))
         precis_cls_ep.append(
             met.precision_score(targets_cls_np, pred_max_ind_np, average="macro")
         )
@@ -428,13 +427,14 @@ def run(
         nt = torch.zeros(1)
 
     # Compute classification metrics per epoch
-    acc_cls = sum(acc_cls_ep) / len(acc_cls_ep)
-    pr_cls = sum(precis_cls_ep) / len(precis_cls_ep)
-    f1_cls = sum(f1_cls_ep) / len(f1_cls_ep)
-    recall_cls = sum(recall_cls_ep) / len(recall_cls_ep)
+    acc_cls = round(sum(acc_cls_ep) / len(acc_cls_ep), 4)
+    pr_cls = round(sum(precis_cls_ep) / len(precis_cls_ep), 4)
+    f1_cls = round(sum(f1_cls_ep) / len(f1_cls_ep), 4)
+    recall_cls = round(sum(recall_cls_ep) / len(recall_cls_ep), 4)
 
     # Print results
-    pf = "%20s" + "%11i" * 2 + "%11.3g" * 4 + "%11i" * 3  # print format
+    pf = "%20s" + "%11i" * 2 + "%11.3g" * 4 + "%11.4g" * 3  # print format
+    # pf = "%10s" * 10
     LOGGER.info(
         pf % ("all", seen, nt.sum(), mp, mr, map50, map, pr_cls, recall_cls, f1_cls)
     )
@@ -506,7 +506,7 @@ def run(
         maps[c] = ap[i]
 
     return (
-        (mp, mr, map50, map, *(val_loss_total.cpu() / len(dataloader)).tolist()),
+        (mp, mr, map50, map, pr_cls, recall_cls, *(val_loss_total.cpu() / len(dataloader)).tolist()),
         maps,
         t,
     )

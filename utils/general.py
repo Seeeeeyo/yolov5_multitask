@@ -1163,7 +1163,7 @@ def print_mutation(results, hyp, save_dir, bucket, prefix=colorstr("evolve: ")):
     with open(evolve_yaml, "w") as f:
         data = pd.read_csv(evolve_csv)
         data = data.rename(columns=lambda x: x.strip())  # strip keys
-        i = np.argmax(fitness(data.values[:, :4]))  #
+        i = np.argmax(fitness(data.values[:, :6]))  #
         generations = len(data)
         f.write(
             "# YOLOv5 Hyperparameter Evolution Results\n"

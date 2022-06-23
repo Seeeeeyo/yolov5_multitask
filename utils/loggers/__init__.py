@@ -62,9 +62,8 @@ class Loggers:
             "metrics/recall",
             "metrics/mAP_0.5",
             "metrics/mAP_0.5:0.95",
-            "metrics/acc_cls",
-            "metrics/recall_cls",
-            "metrics/f1_cls",  # metrics
+            "metrics/prec_cls",
+            "metrics/recall_cls",  # metrics
             "val/box_loss",
             "val/obj_loss",
             "val/cls_det_loss",

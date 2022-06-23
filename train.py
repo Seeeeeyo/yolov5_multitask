@@ -444,7 +444,9 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         0,
         0,
         0,
-    )  # P, R, mAP@.5, mAP@.5-.95, val_loss(box, obj, cls_det, class_new)
+        0,
+        0,
+    )  # P, R, mAP@.5, mAP@.5-.95, pr_cls, recall_cls, val_loss(box, obj, cls_det, class_new)
     results_cls = (0, 0)  # accuracy and f1_macro scores
     scheduler.last_epoch = start_epoch - 1  # do not move
     scaler = torch.cuda.amp.GradScaler(enabled=amp)
@@ -638,10 +640,10 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             # end batch ------------------------------------------------------------------------------------------------
 
         # classification metrics per epoch
-        acc_cls = sum(acc_cls_ep) / len(acc_cls_ep)
-        pr_cls = sum(precis_cls_ep) / len(precis_cls_ep)
-        f1_cls = sum(f1_cls_ep) / len(f1_cls_ep)
-        recall_cls = sum(recall_cls_ep) / len(recall_cls_ep)
+        acc_cls = round(sum(acc_cls_ep) / len(acc_cls_ep), 4)
+        pr_cls = round(sum(precis_cls_ep) / len(precis_cls_ep), 4)
+        f1_cls = round(sum(f1_cls_ep) / len(f1_cls_ep), 4)
+        recall_cls = round(sum(recall_cls_ep) / len(recall_cls_ep), 4)
 
         # Scheduler
         lr = [x["lr"] for x in optimizer.param_groups]  # for loggers
@@ -671,13 +673,12 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             # Update best mAP
             fi = fitness(
                 np.array(results).reshape(1, -1)
-            )  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
+            )  # weighted combination of [P, R, mAP@.5, mAP@.5-.95, P_cls, R_cls]
             if fi > best_fitness:
                 best_fitness = fi
-            cls_train_metrics = [acc_cls, recall_cls, f1_cls]
             log_vals = (
-                list(mloss) + list(results) + cls_train_metrics + lr
-            )  # i=11 and i=3 are cls values
+                list(mloss) + list(results) + lr
+            )
             # print("log_vals", log_vals)
             callbacks.run("on_fit_epoch_end", log_vals, epoch, best_fitness, fi)
 
@@ -913,13 +914,13 @@ def parse_opt(known=False):
     parser.add_argument(
         "--cls_train",
         type=str,
-        default=ROOT / "data/multitasks/gt_class_train.csv",
+        default=ROOT / "data/multitasks/gt_class_train_tiny.csv",
         help="Scene labels path for train set (csv)",
     )
     parser.add_argument(
         "--cls_val",
         type=str,
-        default=ROOT / "data/multitasks/gt_class_val.csv",
+        default=ROOT / "data/multitasks/gt_class_val_tiny.csv",
         help="Scene labels path for val set (csv)",
     )
 
