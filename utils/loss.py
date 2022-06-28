@@ -108,7 +108,7 @@ class ComputeLoss:
             pos_weight=torch.tensor([h["obj_pw"]], device=device)
         )
 
-        CEloss = nn.CrossEntropyLoss()
+        CEloss = nn.CrossEntropyLoss().to(device)
 
         # Class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
         self.cp, self.cn = smooth_BCE(

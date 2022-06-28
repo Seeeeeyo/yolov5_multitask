@@ -37,6 +37,7 @@ ROOT = FILE.parents[0]  # YOLOv5 root directory
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))  # add ROOT to PATH
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
+CUDA_LAUNCH_BLOCKING=1
 
 import val  # for end-of-epoch mAP
 from models.experimental import attempt_load
@@ -125,6 +126,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         opt.cls_val,
     )
     callbacks.run("on_pretrain_routine_start")
+
 
     print("save dir", save_dir)
     # Directories
@@ -515,7 +517,9 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             imgs = (
                 imgs.to(device, non_blocking=True).float() / 255
             )  # uint8 to float32, 0-255 to 0.0-1.0
-            assert batch_size == imgs.shape[0]
+            # print('im', imgs.shape[0])
+            # print('ba',batch_size)
+            # assert batch_size == imgs.shape[0]
             assert imgs.shape[1] == 3  # RGB
             assert imgs.shape[2] == imgs.shape[3] == imgsz
 
@@ -554,8 +558,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             # Forward
             with torch.cuda.amp.autocast(amp):
                 pred = model(imgs)  # forward
-                assert targets_det.shape[1] == 6
-                assert targets_cls.shape[0] == batch_size
+                # assert targets_det.shape[1] == 6
+                # assert targets_cls.shape[0] == batch_size
                 loss_det, loss_cls, loss_items_det, loss_items_cls = compute_loss(
                     pred, targets_det.to(device), targets_cls.to(device)
                 )  # loss scaled by batch_size
@@ -568,8 +572,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 # classification metrics
                 pred_cls_logs = torch.softmax(pred[1].detach(), dim=0)
                 ped_cls_maxs = torch.max(pred_cls_logs, dim=1)
-                pred_max_ind_np = ped_cls_maxs.indices.numpy()
-                pred_max_log_np = ped_cls_maxs.values.numpy()
+                pred_max_ind_np = ped_cls_maxs.indices.cpu().numpy()
+                pred_max_log_np = ped_cls_maxs.values.cpu().numpy()
                 targets_cls_np = targets_cls.data.cpu().numpy()
                 class_pred_count = np.bincount(pred_max_ind_np)
                 class_target_count = np.bincount(targets_cls_np)
@@ -594,7 +598,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 )
                 precis_cls_ep.append(
                     met.precision_score(
-                        targets_cls_np, pred_max_ind_np, average="macro"
+                        targets_cls_np, pred_max_ind_np, average="macro",
+                        zero_division=1,
                     )
                 )
 
@@ -914,18 +919,18 @@ def parse_opt(known=False):
     parser.add_argument(
         "--cls_train",
         type=str,
-        default=ROOT / "data/multitasks/gt_class_train_tiny.csv",
+        default=ROOT / "data/multitasks/gt_class_train.csv",
         help="Scene labels path for train set (csv)",
     )
     parser.add_argument(
         "--cls_val",
         type=str,
-        default=ROOT / "data/multitasks/gt_class_val_tiny.csv",
+        default=ROOT / "data/multitasks/gt_class_val.csv",
         help="Scene labels path for val set (csv)",
     )
 
     # Weights & Biases arguments
-    parser.add_argument("--entity", default=None, help="W&B: Entity")
+    parser.add_argument("--entity", default='selimgilon', help="W&B: Entity")
     parser.add_argument(
         "--upload_dataset",
         nargs="?",
@@ -1140,8 +1145,9 @@ def run(**kwargs):
 
 if __name__ == "__main__":
     opt = parse_opt()
-    path_train = "/Users/selimgilon/Library/Mobile Documents/com~apple~CloudDocs/Desktop/Montreal/UdeM/Internship/E-Smart/code/yolov5_multitask/data/multitasks/esmart_wip/train.cache"
-    path_val = "/Users/selimgilon/Library/Mobile Documents/com~apple~CloudDocs/Desktop/Montreal/UdeM/Internship/E-Smart/code/yolov5_multitask/data/multitasks/esmart_wip/val.cache"
+    print(os.getcwd())
+    path_train = "data/multitasks/esmart_wip/train.cache"
+    path_val = "data/multitasks/esmart_wip/val.cache"
     if os.path.exists(path_train):
         os.remove(path_train)
         print("train cache deleted")

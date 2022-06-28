@@ -309,16 +309,18 @@ def run(
 
         pred_cls_logs = torch.softmax(pred_cls.data.detach(), dim=0)
         ped_cls_maxs = torch.max(pred_cls_logs, dim=1)
-        pred_max_ind_np = ped_cls_maxs.indices.numpy()
-        pred_max_log_np = ped_cls_maxs.values.numpy()
+        pred_max_ind_np = ped_cls_maxs.indices.cpu().numpy()
+        pred_max_log_np = ped_cls_maxs.values.cpu().numpy()
         targets_cls_np = targets_cls.data.cpu().numpy()
         acc_cls_ep.append(met.accuracy_score(targets_cls_np, pred_max_ind_np))
         recall_cls_ep.append(
             met.recall_score(targets_cls_np, pred_max_ind_np, average="macro", zero_division=1)
         )
-        f1_cls_ep.append(met.f1_score(targets_cls_np, pred_max_ind_np, average="macro", zero_division=1))
+        f1_cls_ep.append(
+            met.f1_score(targets_cls_np, pred_max_ind_np, average="macro", zero_division=1)
+        )
         precis_cls_ep.append(
-            met.precision_score(targets_cls_np, pred_max_ind_np, average="macro")
+            met.precision_score(targets_cls_np, pred_max_ind_np, average="macro", zero_division=1)
         )
 
         # NMS
@@ -439,10 +441,14 @@ def run(
         pf % ("all", seen, nt.sum(), mp, mr, map50, map, pr_cls, recall_cls, f1_cls)
     )
 
+    pf_ap_class = "%20s" + "%11i" * 2 + "%11.3g" * 4 # print format
+    # print('stats', stats)
     # Print results per class
     if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
+        # print(ap_class)
         for i, c in enumerate(ap_class):
-            LOGGER.info(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
+
+            LOGGER.info(pf_ap_class % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
 
     # Print speeds
     t = tuple(x / seen * 1e3 for x in dt)  # speeds per image
