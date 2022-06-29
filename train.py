@@ -101,6 +101,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         evolve,
         data,
         cfg,
+        tags,
         resume,
         noval,
         nosave,
@@ -117,6 +118,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         opt.evolve,
         opt.data,
         opt.cfg,
+        opt.tags,
         opt.resume,
         opt.noval,
         opt.nosave,
@@ -220,6 +222,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     freeze = [
         f"model.{x}." for x in (freeze if len(freeze) > 1 else range(freeze[0]))
     ]  # layers to freeze
+    freeze_manual = ['28']
     for k, v in model.named_parameters():
         v.requires_grad = True  # train all layers
         if any(x in k for x in freeze):
@@ -517,9 +520,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             imgs = (
                 imgs.to(device, non_blocking=True).float() / 255
             )  # uint8 to float32, 0-255 to 0.0-1.0
-            # print('im', imgs.shape[0])
-            # print('ba',batch_size)
-            # assert batch_size == imgs.shape[0]
             assert imgs.shape[1] == 3  # RGB
             assert imgs.shape[2] == imgs.shape[3] == imgsz
 
@@ -788,7 +788,7 @@ def parse_opt(known=False):
         default=ROOT / "data/hyps/hyp.scratch-low.yaml",
         help="hyperparameters path",
     )
-    parser.add_argument("--epochs", type=int, default=3)
+    parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument(
         "--batch-size",
         type=int,
@@ -890,7 +890,6 @@ def parse_opt(known=False):
         default=100,
         help="EarlyStopping patience (epochs without improvement)",
     )
-    # TODO as an experiment: freeze the new layers (classification head)
     parser.add_argument(
         "--freeze",
         nargs="+",
@@ -931,6 +930,7 @@ def parse_opt(known=False):
 
     # Weights & Biases arguments
     parser.add_argument("--entity", default='selimgilon', help="W&B: Entity")
+    parser.add_argument("--tags",default='na', help="tags to add in the wandb run")
     parser.add_argument(
         "--upload_dataset",
         nargs="?",
