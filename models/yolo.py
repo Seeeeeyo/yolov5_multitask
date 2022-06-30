@@ -65,6 +65,7 @@ class Detect(nn.Module):
 
     def forward(self, x):
         z = []  # inference output
+        # x is the output of each feature map 20-40-80
         for i in range(self.nl):
             x[i] = self.m[i](x[i])  # conv
             bs, _, ny, nx = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
@@ -97,7 +98,7 @@ class Detect(nn.Module):
         return (
             x
             if self.training
-            else (torch.cat(z, 1),)
+            else (torch.cat(z, 1))
             if self.export
             else (torch.cat(z, 1), x)
         )
@@ -172,9 +173,10 @@ class Model(nn.Module):
     def forward(self, x, augment=False, profile=False, visualize=False):
         if augment:
             return self._forward_augment(x)  # augmented inference, None
-        return self._forward_once(
+        det_test, cls_test = self._forward_once(
             x, profile, visualize
         )  # single-scale inference, train
+        return det_test, cls_test
 
     def _forward_augment(self, x):
         img_size = x.shape[-2:]  # height, width
@@ -208,11 +210,13 @@ class Model(nn.Module):
                 feature_visualization(x, m.type, m.i, save_dir=visualize)
             # TODO change these indices to "last-1" and "last"
             if m.i == 28:  # classification head
+                # print('classiication head')
                 pred_cls = x
             if m.i == 29:  # detection head
+                # print('detection head')
                 pred_det = x
 
-        return pred_det, pred_cls
+        return (pred_det, pred_cls)
 
     def _descale_pred(self, p, flips, scale, img_size):
         # de-scale predictions following augmented inference (inverse operation)
