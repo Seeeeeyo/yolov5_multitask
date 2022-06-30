@@ -150,7 +150,7 @@ def run(
         pred_cls_logs = torch.softmax(cls_pred, dim=1)
         ped_cls_maxs = torch.max(pred_cls_logs, dim=1)
         pred_max_ind_np = ped_cls_maxs.indices.cpu().numpy()
-        pred_max_log_np = round(ped_cls_maxs.values.cpu().numpy()[0], 3)
+        pred_max_log_np = round(ped_cls_maxs.values.cpu().numpy()[0], 2)
         class_pred_count = np.bincount(pred_max_ind_np)
         predicted_class = mapping_road_cond[pred_max_ind_np[0]]
 
@@ -212,8 +212,8 @@ def run(
                             else (names[c] if hide_conf else f"{names[c]} {conf:.2f}")
                         )
                         annotator.box_label(xyxy, label, color=colors(c, True))
-
-                        annotator.text_cv2(predicted_class)
+                        text = str(predicted_class + " " + str(pred_max_log_np))
+                        annotator.text_cv2(text)
 
                     if save_crop:
                         save_one_box(
