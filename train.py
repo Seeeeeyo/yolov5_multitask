@@ -570,7 +570,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 assert loss_items.shape[0] == 4
 
                 # classification metrics
-                pred_cls_logs = torch.softmax(pred[1].detach(), dim=0)
+                pred_cls_logs = torch.softmax(pred[1].detach(), dim=1)
                 ped_cls_maxs = torch.max(pred_cls_logs, dim=1)
                 pred_max_ind_np = ped_cls_maxs.indices.cpu().numpy()
                 pred_max_log_np = ped_cls_maxs.values.cpu().numpy()
@@ -611,6 +611,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 if opt.quad:
                     loss_total *= 4.0
 
+            # TODO add another backwards? one for each loss?
             # Backward
             scaler.scale(loss_total).backward()
 
@@ -664,6 +665,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             if not noval or final_epoch:  # Calculate mAP
                 results, maps, _ = val.run(
                     data_dict,
+                    cls_train=train_csv,
+                    cls_val=val_csv,
                     batch_size=batch_size // WORLD_SIZE * 2,
                     imgsz=imgsz,
                     model=ema.ema,
@@ -738,6 +741,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                     LOGGER.info(f"\nValidating {f}...")
                     results, _, _ = val.run(
                         data_dict,
+                        cls_train=train_csv,
+                        cls_val=val_csv,
                         batch_size=batch_size // WORLD_SIZE * 2,
                         imgsz=imgsz,
                         model=attempt_load(f, device).half(),
@@ -788,7 +793,9 @@ def parse_opt(known=False):
         default=ROOT / "data/hyps/hyp.scratch-low.yaml",
         help="hyperparameters path",
     )
-    parser.add_argument("--epochs", type=int, default=1)
+    parser.add_argument(
+        "--epochs", type=int, default=1
+    )
     parser.add_argument(
         "--batch-size",
         type=int,
@@ -930,7 +937,7 @@ def parse_opt(known=False):
 
     # Weights & Biases arguments
     parser.add_argument("--entity", default='selimgilon', help="W&B: Entity")
-    parser.add_argument("--tags",default='na', help="tags to add in the wandb run")
+    parser.add_argument("--tags", default='na', help="tags to add in the wandb run")
     parser.add_argument(
         "--upload_dataset",
         nargs="?",
@@ -1148,10 +1155,10 @@ if __name__ == "__main__":
     print(os.getcwd())
     path_train = "data/multitasks/esmart_wip/train.cache"
     path_val = "data/multitasks/esmart_wip/val.cache"
-    if os.path.exists(path_train):
-        os.remove(path_train)
-        print("train cache deleted")
-    if os.path.exists(path_val):
-        os.remove(path_val)
-        print("val cache deleted")
+    # if os.path.exists(path_train):
+    #     os.remove(path_train)
+    #     print("train cache deleted")
+    # if os.path.exists(path_val):
+    #     os.remove(path_val)
+    #     print("val cache deleted")
     main(opt)
