@@ -28,6 +28,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
+import numpy as np
 
 import torch
 import torch.backends.cudnn as cudnn
@@ -120,7 +121,8 @@ def run(
     vid_path, vid_writer = [None] * bs, [None] * bs
 
     # Run inference
-    model.warmup(imgsz=(1 if pt else bs, 3, *imgsz))  # warmup
+    # TODO Uncomment the next line and adapt the warmup function
+    # model.warmup(imgsz=(1 if pt else bs, 3, *imgsz))  # warmup
     dt, seen = [0.0, 0.0, 0.0], 0
     for path, im, im0s, vid_cap, s in dataset:
         t1 = time_sync()
@@ -138,13 +140,23 @@ def run(
             if visualize
             else False
         )
-        pred = model(im, augment=augment, visualize=visualize)
+        preds = model(im, augment=augment, visualize=visualize)
+        det_pred = preds[0][0]
+        cls_pred = preds[1]
+        # TODO add test to make sure the preds have the correct shape
         t3 = time_sync()
         dt[1] += t3 - t2
+        mapping_road_cond = {0: "Dry", 1: "Snowy", 2: "Wet"}
+        pred_cls_logs = torch.softmax(cls_pred, dim=1)
+        ped_cls_maxs = torch.max(pred_cls_logs, dim=1)
+        pred_max_ind_np = ped_cls_maxs.indices.cpu().numpy()
+        pred_max_log_np = round(ped_cls_maxs.values.cpu().numpy()[0], 2)
+        class_pred_count = np.bincount(pred_max_ind_np)
+        predicted_class = mapping_road_cond[pred_max_ind_np[0]]
 
         # NMS
         pred = non_max_suppression(
-            pred, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det
+            det_pred, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det
         )
         dt[2] += time_sync() - t3
 
@@ -200,6 +212,9 @@ def run(
                             else (names[c] if hide_conf else f"{names[c]} {conf:.2f}")
                         )
                         annotator.box_label(xyxy, label, color=colors(c, True))
+                        text = str(predicted_class + " " + str(pred_max_log_np))
+                        annotator.text_cv2(text)
+
                     if save_crop:
                         save_one_box(
                             xyxy,
@@ -239,7 +254,7 @@ def run(
 
         # Print time (inference-only)
         LOGGER.info(f"{s}Done. ({t3 - t2:.3f}s)")
-
+    print('Road Condition Predicted:', predicted_class, 'with proba:', pred_max_log_np)
     # Print results
     t = tuple(x / seen * 1e3 for x in dt)  # speeds per image
     LOGGER.info(
@@ -257,25 +272,44 @@ def run(
         strip_optimizer(weights)  # update model (to fix SourceChangeWarning)
 
 
+def cam_show_img(img, feature_map, grads, out_name):
+    H, W, _ = img.shape
+    cam = np.zeros(feature_map.shape[1:], dtype=np.float32)
+    grads = grads.reshape([grads.shape[0],-1])
+    weights = np.mean(grads, axis=1)
+    for i, w in enumerate(weights):
+        cam += w * feature_map[i, :, :]
+    cam = np.maximum(cam, 0)
+    cam = cam / cam.max()
+    cam = cv2.resize(cam, (W, H))
+
+    heatmap = cv2.applyColorMap(np.uint8(255 * cam), cv2.COLORMAP_JET)
+    cam_img = 0.3 * heatmap + 0.7 * img
+
+    cv2.imwrite(out_name, cam_img)
+
+
 def parse_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--weights",
         nargs="+",
         type=str,
-        default=ROOT / "yolov5s.pt",
+        #default=ROOT / "yolov5s.pt",
+        default="runs/train/exp234/weights/best.pt",
         help="model path(s)",
     )
     parser.add_argument(
         "--source",
         type=str,
-        default=ROOT / "data/images",
+        # default=ROOT / "data/images",
+        default="img_heatmap/data/test.jpg",
         help="file/dir/URL/glob, 0 for webcam",
     )
     parser.add_argument(
         "--data",
         type=str,
-        default=ROOT / "data/coco128.yaml",
+        # default=ROOT / "data/coco128.yaml",
         help="(optional) dataset.yaml path",
     )
     parser.add_argument(

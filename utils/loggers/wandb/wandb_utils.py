@@ -172,11 +172,18 @@ class WandbLogger:
                 )
                 opt.resume = model_artifact_name
         elif self.wandb:
+            tags = []
+            from_user = str(opt.tags).split(',')
+            for elem in from_user:
+                tags.append(elem)
+            tags.append(str(opt.cfg.split('/')[-1]))
+            tags.append(str('fr:'+ str(opt.freeze)))
+            # tags = [str(opt.tags).split(','), str(opt.cfg.split('/')[-1]), str('fr:'+ str(opt.freeze))]
             self.wandb_run = (
                 wandb.init(
                     config=opt,
                     resume="allow",
-                    project="YOLOv5"
+                    project="esmart_early_exp_yolo_mtl"
                     if opt.project == "runs/train"
                     else Path(opt.project).stem,
                     entity=opt.entity,
@@ -184,6 +191,7 @@ class WandbLogger:
                     job_type=job_type,
                     id=run_id,
                     allow_val_change=True,
+                    tags=tags
                 )
                 if not wandb.run
                 else wandb.run

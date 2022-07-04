@@ -108,7 +108,7 @@ class ComputeLoss:
             pos_weight=torch.tensor([h["obj_pw"]], device=device)
         )
 
-        CEloss = nn.CrossEntropyLoss()
+        CEloss = nn.CrossEntropyLoss().to(device)
 
         # Class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
         self.cp, self.cn = smooth_BCE(
@@ -146,7 +146,6 @@ class ComputeLoss:
     def __call__(
         self, preds, targets_det, targets_cls
     ):  # predictions, detection targets, classification targets
-        # TODO verify this and adapt the model(input) return format if needed
         (det_pred, cls_pred) = preds
         # detection losses
         lcls = torch.zeros(1, device=self.device)  # classif loss (object detector)
@@ -158,7 +157,6 @@ class ComputeLoss:
         tcls, tbox, indices, anchors = self.build_targets(
             det_pred, targets_det
         )  # targets
-
         # Scene classification loss (for 1 classification now, will extend it later)
         # lcls_mtl = torch.zeros(1, device=self.device)  # class loss (scene classification)
         lcls_mtl = self.CEloss(cls_pred, targets_cls)
@@ -222,11 +220,10 @@ class ComputeLoss:
         bs = tobj.shape[0]  # batch size
 
         # print('lcls_mtl', lcls_mtl)
-        # TODO check if the lcls_mtl has to be multiplied by "bs" as the other losses or not
-        # TODO verify if the cat works (night not due to the different shapes)
+        # TODO verify the lcls_mtl has to be multiplied by "bs" as the other losses
         return (
             (lbox + lobj + lcls) * bs,
-            lcls_mtl * bs,
+            (lcls_mtl * bs)/20,
             torch.cat((lbox, lobj, lcls)).detach(),
             lcls_mtl.detach(),
         )

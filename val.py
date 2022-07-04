@@ -122,6 +122,8 @@ def process_batch(detections, labels, iouv):
 @torch.no_grad()
 def run(
     data,
+    cls_train,
+    cls_val,
     weights=None,  # model.pt path(s)
     batch_size=32,  # batch size
     imgsz=640,  # inference size (pixels)
@@ -221,6 +223,8 @@ def run(
             imgsz,
             batch_size,
             stride,
+            opt.cls_train,
+            opt.cls_val,
             single_cls,
             pad=pad,
             rect=rect,
@@ -307,18 +311,27 @@ def run(
         # classification metrics
         import sklearn.metrics as met
 
-        pred_cls_logs = torch.softmax(pred_cls.data.detach(), dim=0)
+        pred_cls_logs = torch.softmax(pred_cls.data.detach(), dim=1)
         ped_cls_maxs = torch.max(pred_cls_logs, dim=1)
-        pred_max_ind_np = ped_cls_maxs.indices.numpy()
-        pred_max_log_np = ped_cls_maxs.values.numpy()
+        pred_max_ind_np = ped_cls_maxs.indices.cpu().numpy()
+        pred_max_log_np = ped_cls_maxs.values.cpu().numpy()
         targets_cls_np = targets_cls.data.cpu().numpy()
+
+        class_pred_count = np.bincount(pred_max_ind_np)
+        class_target_count = np.bincount(targets_cls_np)
+        num_unique_pred = np.unique(pred_max_ind_np)
+        num_unique_target = np.unique(targets_cls_np)
+        # print("Preds unique count:", num_unique_pred, "-- targets unique count:", num_unique_target)  # to see the distribution of pred and targets classes
+        # assert np.array_equal(unique_targets, unique_preds)  # if we want to check that all different classes are predicted
         acc_cls_ep.append(met.accuracy_score(targets_cls_np, pred_max_ind_np))
         recall_cls_ep.append(
             met.recall_score(targets_cls_np, pred_max_ind_np, average="macro", zero_division=1)
         )
-        f1_cls_ep.append(met.f1_score(targets_cls_np, pred_max_ind_np, average="macro", zero_division=1))
+        f1_cls_ep.append(
+            met.f1_score(targets_cls_np, pred_max_ind_np, average="macro", zero_division=1)
+        )
         precis_cls_ep.append(
-            met.precision_score(targets_cls_np, pred_max_ind_np, average="macro")
+            met.precision_score(targets_cls_np, pred_max_ind_np, average="macro", zero_division=1)
         )
 
         # NMS
@@ -439,10 +452,14 @@ def run(
         pf % ("all", seen, nt.sum(), mp, mr, map50, map, pr_cls, recall_cls, f1_cls)
     )
 
+    pf_ap_class = "%20s" + "%11i" * 2 + "%11.3g" * 4 # print format
+    # print('stats', stats)
     # Print results per class
     if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
+        # print(ap_class)
         for i, c in enumerate(ap_class):
-            LOGGER.info(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
+
+            LOGGER.info(pf_ap_class % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
 
     # Print speeds
     t = tuple(x / seen * 1e3 for x in dt)  # speeds per image
@@ -515,13 +532,14 @@ def run(
 def parse_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data", type=str, default=ROOT / "data/coco128.yaml", help="dataset.yaml path"
+        "--data", type=str, default=ROOT / "data/multitasks.yaml", help="dataset.yaml path"
     )
     parser.add_argument(
         "--weights",
         nargs="+",
         type=str,
-        default=ROOT / "yolov5s.pt",
+        # default=ROOT / "yolov5s.pt",
+        default="runs/train/exp234/weights/best.pt",
         help="model.pt path(s)",
     )
     parser.add_argument("--batch-size", type=int, default=32, help="batch size")
@@ -582,6 +600,18 @@ def parse_opt():
     )
     parser.add_argument(
         "--dnn", action="store_true", help="use OpenCV DNN for ONNX inference"
+    )
+    parser.add_argument(
+        "--cls_train",
+        type=str,
+        default=ROOT / "data/multitasks/gt_class_train.csv",
+        help="Scene labels path for train set (csv)",
+    )
+    parser.add_argument(
+        "--cls_val",
+        type=str,
+        default=ROOT / "data/multitasks/gt_class_val.csv",
+        help="Scene labels path for val set (csv)",
     )
     opt = parser.parse_args()
     opt.data = check_yaml(opt.data)  # check YAML
