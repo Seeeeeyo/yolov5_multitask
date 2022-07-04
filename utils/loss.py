@@ -108,7 +108,7 @@ class ComputeLoss:
             pos_weight=torch.tensor([h["obj_pw"]], device=device)
         )
 
-        CEloss = nn.CrossEntropyLoss().to(device)
+        CEloss = nn.CrossEntropyLoss(reduction='none').to(device)
 
         # Class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
         self.cp, self.cn = smooth_BCE(
@@ -153,13 +153,17 @@ class ComputeLoss:
         lobj = torch.zeros(1, device=self.device)  # object loss
 
         # Useless for now
-        # lcls_mtl = torch.zeros(1, device= self.device) # classif loss
+        focal_loss_mtl = torch.zeros(1, device= self.device)  # classif loss
         tcls, tbox, indices, anchors = self.build_targets(
             det_pred, targets_det
         )  # targets
+
         # Scene classification loss (for 1 classification now, will extend it later)
         # lcls_mtl = torch.zeros(1, device=self.device)  # class loss (scene classification)
         lcls_mtl = self.CEloss(cls_pred, targets_cls)
+        pt = torch.exp(-lcls_mtl)
+        # TODO decide whether we mean over the batch or not with ((1 - pt) ** 3 * lcls_mtl).mean()
+        focal_loss_mtl += ((1 - pt) ** 3 * lcls_mtl).mean()  # mean over the batch
 
         # Object detection Losses
         for i, pi in enumerate(det_pred):  # layer index, layer predictions
@@ -222,9 +226,11 @@ class ComputeLoss:
         # TODO verify the lcls_mtl has to be multiplied by "bs" as the other losses
         return (
             (lbox + lobj + lcls) * bs,
-            (lcls_mtl * bs)/20,
+            # lcls_mtl,
+            focal_loss_mtl,
             torch.cat((lbox, lobj, lcls)).detach(),
-            lcls_mtl.detach(),
+            # lcls_mtl.detach(),
+            focal_loss_mtl.detach()
         )
 
     def build_targets(self, p, targets):
