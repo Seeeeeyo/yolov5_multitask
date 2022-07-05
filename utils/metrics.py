@@ -9,12 +9,13 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import torch
 
 
 def fitness(x):
     # Model fitness as a weighted combination of metrics
-    w = [0.0, 0.0, 0.1, 0.8, 0.1, 0]  # weights for [P, R, mAP@0.5, mAP@0.5:0.95, P_cls, R_cls]
+    w = [0.0, 0.0, 0.8, 0, 0.1, 0.1]  # weights for [P, R, mAP@0.5, mAP@0.5:0.95, P_cls, R_cls]
     return (x[:, :6] * w).sum(1)
 
 
@@ -219,6 +220,63 @@ class ConfusionMatrix:
             fig.axes[0].set_xlabel("True")
             fig.axes[0].set_ylabel("Predicted")
             fig.savefig(Path(save_dir) / "confusion_matrix.png", dpi=250)
+            plt.close()
+        except Exception as e:
+            print(f"WARNING: ConfusionMatrix plot failure: {e}")
+
+    def print(self):
+        for i in range(self.nc + 1):
+            print(" ".join(map(str, self.matrix[i])))
+
+
+class ConfusionMatrixClassification:
+    def __init__(self, nc, conf=0.25, iou_thres=0.45, class_names=['Dry', 'Snowy', 'Wet']):
+        self.matrix = np.zeros((nc, nc)) # confusion matrix for the complete
+        self.nc = nc  # number of classes
+        self.conf = conf
+        self.iou_thres = iou_thres
+        self.class_names = class_names
+
+    def get_matrix(self):
+        return self.matrix
+
+    def compute(self, groundtruth, predictions):
+        from sklearn.metrics import confusion_matrix
+        names = {0: 'Dry', 1: 'Snowy', 2: 'Wet'}
+        cm = confusion_matrix(groundtruth, predictions, normalize=None, labels=list(range(self.nc)))
+        self.matrix += cm
+
+    def plot(self, normalize=True, save_dir=""):
+        try:
+            import seaborn as sn
+            fig = plt.figure(figsize=(12, 9), tight_layout=True)
+            nc, nn = self.nc, len(self.class_names)  # number of classes, number of names
+            assert nc == nn
+            sn.set(font_scale=1.0 if nc < 50 else 0.8)  # for label size
+            labels = (0 < nn < 99) and (nn == nc)  # apply names to ticklabels
+            if normalize:
+                row_sums = self.matrix.sum(axis=1)
+                norm_matrix = self.matrix / row_sums[:, np.newaxis]
+
+
+            with warnings.catch_warnings():
+                warnings.simplefilter(
+                    "ignore"
+                )  # suppress empty matrix RuntimeWarning: All-NaN slice encountered
+                sn.heatmap(
+                    norm_matrix,
+                    annot=True,
+                    # annot_kws={"size": 8},
+                    cmap="Blues",
+                    fmt="0.2%",
+                    square=True,
+                    vmin=0,
+                    xticklabels=self.class_names,
+                    yticklabels=self.class_names,
+                ).set_facecolor((1, 1, 1))
+            fig.axes[0].set_xlabel("Predicted")
+            fig.axes[0].set_ylabel("Ground truth")
+            fig.savefig(Path(save_dir) / "confusion_matrix_cls.png", dpi=250)
             plt.close()
         except Exception as e:
             print(f"WARNING: ConfusionMatrix plot failure: {e}")
