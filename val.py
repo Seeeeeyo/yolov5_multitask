@@ -53,7 +53,7 @@ from utils.general import (
     xywh2xyxy,
     xyxy2xywh,
 )
-from utils.metrics import ConfusionMatrix, ap_per_class, box_iou
+from utils.metrics import ConfusionMatrix, ConfusionMatrixClassification,ap_per_class, box_iou
 from utils.plots import output_to_target, plot_images, plot_val_study
 from utils.torch_utils import select_device, time_sync
 
@@ -240,6 +240,9 @@ def run(
             model.names if hasattr(model, "names") else model.module.names
         )
     }
+
+    confusion_matrix_cls = ConfusionMatrixClassification(nc=3)
+
     class_map = coco80_to_coco91_class() if is_coco else list(range(1000))
     s = ("%20s" + "%11s" * 9) % (
         "Class",
@@ -316,6 +319,8 @@ def run(
         pred_max_ind_np = ped_cls_maxs.indices.cpu().numpy()
         pred_max_log_np = ped_cls_maxs.values.cpu().numpy()
         targets_cls_np = targets_cls.data.cpu().numpy()
+
+        confusion_matrix_cls.compute(targets_cls_np, pred_max_ind_np)
 
         class_pred_count = np.bincount(pred_max_ind_np)
         class_target_count = np.bincount(targets_cls_np)
@@ -473,6 +478,7 @@ def run(
     # Plots
     if plots:
         confusion_matrix.plot(save_dir=save_dir, names=list(names.values()))
+        confusion_matrix_cls.plot(save_dir=save_dir)
         callbacks.run("on_val_end")
 
     # Save JSON

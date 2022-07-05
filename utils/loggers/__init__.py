@@ -224,6 +224,7 @@ class Loggers:
             "results.png",
             "confusion_matrix.png",
             *(f"{x}_curve.png" for x in ("F1", "PR", "P", "R")),
+            "confusion_matrix_cls.png"
         ]
         files = [
             (self.save_dir / f) for f in files if (self.save_dir / f).exists()
