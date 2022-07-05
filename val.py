@@ -244,7 +244,7 @@ def run(
     confusion_matrix_cls = ConfusionMatrixClassification(nc=3)
 
     class_map = coco80_to_coco91_class() if is_coco else list(range(1000))
-    s = ("%20s" + "%11s" * 9) % (
+    s = ("%20s" + "%11s" * 10) % (
         "Class",
         "Images",
         "Labels",
@@ -254,6 +254,7 @@ def run(
         "mAP@.5:.95",
         "cls_P",
         "cls_R",
+        "cls_fpr",
         "cls_f1",
     )
     # detection
@@ -482,12 +483,12 @@ def run(
         for i, c in enumerate(ap_class):
             LOGGER.info(pf_ap_class % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
 
-        # TODO print results per class
-    print('pr_per_class', pr_per_class)
-    print('recall_per_class', recall_per_class)
-    print('fpr_per_class', fpr_per_class)
-    print('fscore_per_class', fscore_per_class)
-    print('support_per_class', support_per_class)
+    pf_ap_class_cls = "%20s" + "%11i" * 2 + "%11s" * 4 + "%11.3g" * 4  # print format
+    class_names = ['dry', 'snowy', 'wet']
+    for i in range(3):
+        LOGGER.info(pf_ap_class_cls % (class_names[i], seen, support_per_class[i], "-", "-", "-", "-",
+                                       pr_per_class[i], recall_per_class[i], fpr_per_class[i],
+                                       fscore_per_class[i]))
 
     # Print speeds
     t = tuple(x / seen * 1e3 for x in dt)  # speeds per image
