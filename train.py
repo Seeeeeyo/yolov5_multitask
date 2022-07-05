@@ -219,9 +219,13 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     amp = check_amp(model)  # check AMP
 
     # Freeze
-    freeze = [
-        f"model.{x}." for x in (freeze if len(freeze) > 1 else range(freeze[0]))
-    ]  # layers to freeze
+    # freeze = [
+    #     f"model.{x}." for x in (freeze if len(freeze) > 1 else range(freeze[0]))
+    # ]  # layers to freeze
+    if len(freeze) > 0:
+        freeze = [
+            f"model.{x}." for x in (freeze)
+        ]  # layers to freeze
     freeze_manual = ['28']
     for k, v in model.named_parameters():
         v.requires_grad = True  # train all layers
@@ -564,8 +568,11 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                     pred, targets_det.to(device), targets_cls.to(device)
                 )  # loss scaled by batch_size
                 loss_total = loss_det + loss_cls
+                # loss_items = torch.cat(
+                #     (loss_items_det, loss_items_cls.reshape(1)), dim=0
+                # )
                 loss_items = torch.cat(
-                    (loss_items_det, loss_items_cls.reshape(1)), dim=0
+                    (loss_items_det, loss_items_cls), dim=0
                 )
                 assert loss_items.shape[0] == 4
 
