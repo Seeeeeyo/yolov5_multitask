@@ -208,15 +208,14 @@ class Model(nn.Module):
             y.append(x if m.i in self.save else None)  # save output
             if visualize:
                 feature_visualization(x, m.type, m.i, save_dir=visualize)
-            # TODO change these indices to "last-1" and "last"
-            if m.i == 28:  # classification head
-                # print('classiication head')
+            # The classification head has to be the second to last layer
+            if m.i == self.model[-2].i:  # classification head
                 pred_cls = x
-            if m.i == 29:  # detection head
-                # print('detection head')
+            # The detection head has to be the last layer
+            if m.i == self.model[-1].i:  # detection head
                 pred_det = x
 
-        return (pred_det, pred_cls)
+        return pred_det, pred_cls
 
     def _descale_pred(self, p, flips, scale, img_size):
         # de-scale predictions following augmented inference (inverse operation)
