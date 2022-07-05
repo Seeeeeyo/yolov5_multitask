@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
+import sklearn.metrics as met
 
 
 def fitness(x):
@@ -25,6 +26,26 @@ def smooth(y, f=0.05):
     p = np.ones(nf // 2)  # ones padding
     yp = np.concatenate((p * y[0], y, p * y[-1]), 0)  # y padded
     return np.convolve(yp, np.ones(nf) / nf, mode="valid")  # y-smoothed
+
+
+def scores_cls(preds, targets):
+    from sklearn.metrics import precision_recall_fscore_support as score
+    targets = np.concatenate(targets, axis=0)
+    preds = np.concatenate(preds)
+    precision_per_class, recall_per_class, fscore_per_class, support_per_class = score(targets, preds)
+    fpr_per_class = 1 - recall_per_class
+
+    precision_macro = precision_per_class.mean()
+    recall_macro = recall_per_class.mean()
+    fpr_macro = fpr_per_class.mean()
+    fscore_macro = fscore_per_class.mean()
+    support = support_per_class.mean()
+
+    score_per_class = [precision_per_class, recall_per_class, fpr_per_class, fscore_per_class, support_per_class]
+    score_macro = [precision_macro, recall_macro, fpr_macro, fscore_macro, support]
+
+    return score_per_class, score_macro
+
 
 
 def ap_per_class(
@@ -243,7 +264,9 @@ class ConfusionMatrixClassification:
     def compute(self, groundtruth, predictions):
         from sklearn.metrics import confusion_matrix
         names = {0: 'Dry', 1: 'Snowy', 2: 'Wet'}
-        cm = confusion_matrix(groundtruth, predictions, normalize=None, labels=list(range(self.nc)))
+        gt = np.concatenate(groundtruth, axis=0)
+        preds = np.concatenate(predictions)
+        cm = confusion_matrix(gt, preds, normalize=None, labels=list(range(self.nc)))
         self.matrix += cm
 
     def plot(self, normalize=True, save_dir=""):

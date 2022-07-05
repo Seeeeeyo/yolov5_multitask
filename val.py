@@ -53,7 +53,7 @@ from utils.general import (
     xywh2xyxy,
     xyxy2xywh,
 )
-from utils.metrics import ConfusionMatrix, ConfusionMatrixClassification,ap_per_class, box_iou
+from utils.metrics import ConfusionMatrix, ConfusionMatrixClassification, ap_per_class, box_iou, scores_cls
 from utils.plots import output_to_target, plot_images, plot_val_study
 from utils.torch_utils import select_device, time_sync
 
@@ -272,10 +272,12 @@ def run(
     f1_cls_ep = []
     precis_cls_ep = []
     acc_cls_ep = []
+    fp_cls_ep = []
 
     loss_det = torch.zeros(3, device=device)
     loss_cls = torch.zeros(1, device=device)
     jdict, stats, ap, ap_class = [], [], [], []
+    stats_cls = {'pred': [], 'gt': [], 'prob': []}
     callbacks.run("on_val_start")
     pbar = tqdm(
         dataloader, desc=s, bar_format="{l_bar}{bar:10}{r_bar}{bar:-10b}"
@@ -311,16 +313,23 @@ def run(
             val_loss_total = torch.cat((loss_det, loss_cls.reshape(1)), dim=0)
             # print('val loss:', val_loss_total)
 
-        # classification metrics
-        import sklearn.metrics as met
 
+        # get the predicted label (for classification task)
         pred_cls_logs = torch.softmax(pred_cls.data.detach(), dim=1)
         ped_cls_maxs = torch.max(pred_cls_logs, dim=1)
         pred_max_ind_np = ped_cls_maxs.indices.cpu().numpy()
         pred_max_log_np = ped_cls_maxs.values.cpu().numpy()
         targets_cls_np = targets_cls.data.cpu().numpy()
 
-        confusion_matrix_cls.compute(targets_cls_np, pred_max_ind_np)
+        assert len(pred_max_ind_np) == len(targets_cls_np)
+        assert len(pred_max_ind_np) ==  len(pred_max_log_np)
+
+        stats_cls['pred'].append(pred_max_ind_np)
+        stats_cls['gt'].append(targets_cls_np)
+        stats_cls['prob'].append(pred_max_log_np)
+
+        # TODO might wanna do it later so we call it only once with the values from stats_cls
+        # confusion_matrix_cls.compute(targets_cls_np, pred_max_ind_np)
 
         class_pred_count = np.bincount(pred_max_ind_np)
         class_target_count = np.bincount(targets_cls_np)
@@ -328,16 +337,20 @@ def run(
         num_unique_target = np.unique(targets_cls_np)
         # print("Preds unique count:", num_unique_pred, "-- targets unique count:", num_unique_target)  # to see the distribution of pred and targets classes
         # assert np.array_equal(unique_targets, unique_preds)  # if we want to check that all different classes are predicted
-        acc_cls_ep.append(met.accuracy_score(targets_cls_np, pred_max_ind_np))
-        recall_cls_ep.append(
-            met.recall_score(targets_cls_np, pred_max_ind_np, average="macro", zero_division=1)
-        )
-        f1_cls_ep.append(
-            met.f1_score(targets_cls_np, pred_max_ind_np, average="macro", zero_division=1)
-        )
-        precis_cls_ep.append(
-            met.precision_score(targets_cls_np, pred_max_ind_np, average="macro", zero_division=1)
-        )
+
+
+        # ##################
+        # acc_cls_ep.append(met.accuracy_score(targets_cls_np, pred_max_ind_np))
+        # recall_cls_ep.append(
+        #     met.recall_score(targets_cls_np, pred_max_ind_np, average="macro", zero_division=1)
+        # )
+        # f1_cls_ep.append(
+        #     met.f1_score(targets_cls_np, pred_max_ind_np, average="macro", zero_division=1)
+        # )
+        # precis_cls_ep.append(
+        #     met.precision_score(targets_cls_np, pred_max_ind_np, average="macro", zero_division=1)
+        # )
+        # ###################
 
         # NMS
         targets_det[:, 2:] *= torch.tensor(
@@ -359,13 +372,11 @@ def run(
         )
         dt[2] += time_sync() - t3
 
-        # Metrics
+        # Detection Metrics
         for si, pred in enumerate(out_det):
             # print("si", si, " --- pred", pred, " --- out", out_det)
             labels = targets_det[targets_det[:, 0] == si, 1:]
             nl, npr = labels.shape[0], pred.shape[0]  # number of labels, predictions
-            # print('npr', npr)
-            # print('nl', nl)
             path, shape = Path(paths[si]), shapes[si][0]
             correct = torch.zeros(npr, niou, dtype=torch.bool, device=device)  # init
             seen += 1
@@ -374,7 +385,6 @@ def run(
                 if nl:
                     stats.append((correct, *torch.zeros((3, 0), device=device)))
                 continue
-            # print('stats', stats)
             # Predictions
             if single_cls:
                 pred[:, 5] = 0
@@ -445,26 +455,39 @@ def run(
         nt = torch.zeros(1)
 
     # Compute classification metrics per epoch
-    acc_cls = round(sum(acc_cls_ep) / len(acc_cls_ep), 4)
-    pr_cls = round(sum(precis_cls_ep) / len(precis_cls_ep), 4)
-    f1_cls = round(sum(f1_cls_ep) / len(f1_cls_ep), 4)
-    recall_cls = round(sum(recall_cls_ep) / len(recall_cls_ep), 4)
+    #################################################
+    # acc_cls = round(sum(acc_cls_ep) / len(acc_cls_ep), 4)
+    # pr_cls = round(sum(precis_cls_ep) / len(precis_cls_ep), 4)
+    # f1_cls = round(sum(f1_cls_ep) / len(f1_cls_ep), 4)
+    # recall_cls = round(sum(recall_cls_ep) / len(recall_cls_ep), 4)
+    #################################################
+
+    # Compute classification metrics
+    confusion_matrix_cls.compute(stats_cls['gt'], stats_cls['pred'])
+    scores_per_class, scores_macro = scores_cls(stats_cls['pred'], stats_cls['gt'])
+
+    pr_cls, recall_cls, fpr_cls, f1_cls, support = scores_macro
+    pr_per_class, recall_per_class, fpr_per_class, fscore_per_class, support_per_class = scores_per_class
 
     # Print results
-    pf = "%20s" + "%11i" * 2 + "%11.3g" * 4 + "%11.4g" * 3  # print format
-    # pf = "%10s" * 10
+    pf = "%20s" + "%11i" * 2 + "%11.3g" * 4 + "%11.4g" * 4  # print format
     LOGGER.info(
-        pf % ("all", seen, nt.sum(), mp, mr, map50, map, pr_cls, recall_cls, f1_cls)
+        pf % ("all", seen, nt.sum(), mp, mr, map50, map, pr_cls, recall_cls, fpr_cls, f1_cls)
     )
 
-    pf_ap_class = "%20s" + "%11i" * 2 + "%11.3g" * 4 # print format
+    pf_ap_class = "%20s" + "%11i" * 2 + "%11.3g" * 4  # print format
     # print('stats', stats)
     # Print results per class
     if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
-        # print(ap_class)
         for i, c in enumerate(ap_class):
-
             LOGGER.info(pf_ap_class % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
+
+        # TODO print results per class
+    print('pr_per_class', pr_per_class)
+    print('recall_per_class', recall_per_class)
+    print('fpr_per_class', fpr_per_class)
+    print('fscore_per_class', fscore_per_class)
+    print('support_per_class', support_per_class)
 
     # Print speeds
     t = tuple(x / seen * 1e3 for x in dt)  # speeds per image
