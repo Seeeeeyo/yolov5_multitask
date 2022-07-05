@@ -908,7 +908,7 @@ def parse_opt(known=False):
         "--freeze",
         nargs="+",
         type=int,
-        default=[0],
+        default=[],
         help="Freeze layers: backbone=10, first3=0 1 2",
     )
     parser.add_argument(
