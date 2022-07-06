@@ -688,11 +688,11 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             # Update best mAP
             fi = fitness(
                 np.array(results).reshape(1, -1)
-            )  # weighted combination of [P, R, mAP@.5, mAP@.5-.95, P_cls, R_cls]
+            )  # weighted combination of [P, R, mAP@.5, mAP@.5-.95, P_cls, R_cls, P_snowy, P_wet, R_snowy, R_wet]
             if fi > best_fitness:
                 best_fitness = fi
             log_vals = (
-                list(mloss) + list(results) + lr
+                list(mloss) + list(results) + lr  # train mean losses (4), val metrics (10), val losses {4), lr (3)
             )
             # print("log_vals", log_vals)
             callbacks.run("on_fit_epoch_end", log_vals, epoch, best_fitness, fi)

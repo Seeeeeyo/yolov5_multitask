@@ -15,9 +15,10 @@ import sklearn.metrics as met
 
 
 def fitness(x):
-    # Model fitness as a weighted combination of metrics
-    w = [0.0, 0.0, 0.8, 0, 0.1, 0.1]  # weights for [P, R, mAP@0.5, mAP@0.5:0.95, P_cls, R_cls]
-    return (x[:, :6] * w).sum(1)
+    # Model fitness as a weighted combination of metrics (detection and classification tasks)
+    # weights for [P, R, mAP@.5, mAP@.5-.95, P_cls, R_cls, P_snowy, P_wet, R_snowy, R_wet]
+    w = [0.0, 0.0, 0.6, 0.0, 0.0, 0.0, 0.1, 0.1, 0.1, 0.1]
+    return (x[:, :10] * w).sum(1)
 
 
 def smooth(y, f=0.05):
@@ -33,7 +34,7 @@ def scores_cls(preds, targets):
     targets = np.concatenate(targets, axis=0)
     preds = np.concatenate(preds)
     precision_per_class, recall_per_class, fscore_per_class, support_per_class = score(targets, preds, zero_division=1)
-    fpr_per_class = 1 - recall_per_class
+    fpr_per_class = 1 - precision_per_class
 
     precision_macro = precision_per_class.mean()
     recall_macro = recall_per_class.mean()

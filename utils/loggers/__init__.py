@@ -53,17 +53,23 @@ class Loggers:
         self.hyp = hyp
         self.logger = logger  # for printing results to console
         self.include = include
+
         self.keys = [
             "train/box_loss",
             "train/obj_loss",
             "train/cls_det_loss",
             "train/cls_loss",  # train loss
+            # [P, R, mAP @ .5, mAP @ .5 - .95, P_cls, R_cls, P_snowy, P_wet, R_snowy, R_wet]
             "metrics/precision",
             "metrics/recall",
             "metrics/mAP_0.5",
             "metrics/mAP_0.5:0.95",
             "metrics/prec_cls",
-            "metrics/recall_cls",  # metrics
+            "metrics/recall_cls",
+            "metrics/P_snowy",
+            "metrics/P_wet",
+            "metrics/R_snowy",
+            "metrics/R_wet",  # metrics
             "val/box_loss",
             "val/obj_loss",
             "val/cls_det_loss",
@@ -78,6 +84,12 @@ class Loggers:
             "best/recall",
             "best/mAP_0.5",
             "best/mAP_0.5:0.95",
+            "best/P_cls",
+            "best/R_cls",
+            "best/P_snowy",
+            "best/P_wet",
+            "best/R_snowy",
+            "best/R_wet",  # metrics
         ]
         for k in LOGGERS:
             setattr(self, k, None)  # init empty logger dictionary
@@ -198,7 +210,8 @@ class Loggers:
 
         if self.wandb:
             if best_fitness == fi:
-                best_results = [epoch] + vals[3:7]
+                best_results = [epoch] + vals[4:14]
+                # [P, R, mAP @.5, mAP @.5-.95, P_cls, R_cls, P_snowy, P_wet, R_snowy, R_wet]
                 for i, name in enumerate(self.best_keys):
                     self.wandb.wandb_run.summary[name] = best_results[
                         i
@@ -238,7 +251,7 @@ class Loggers:
                 )
 
         if self.wandb:
-            self.wandb.log(dict(zip(self.keys[3:10], results)))
+            self.wandb.log(dict(zip(self.keys[4:14], results)))
             self.wandb.log(
                 {"Results": [wandb.Image(str(f), caption=f.name) for f in files]}
             )

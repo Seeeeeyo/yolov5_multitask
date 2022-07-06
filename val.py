@@ -329,29 +329,12 @@ def run(
         stats_cls['gt'].append(targets_cls_np)
         stats_cls['prob'].append(pred_max_log_np)
 
-        # TODO might wanna do it later so we call it only once with the values from stats_cls
-        # confusion_matrix_cls.compute(targets_cls_np, pred_max_ind_np)
-
         class_pred_count = np.bincount(pred_max_ind_np)
         class_target_count = np.bincount(targets_cls_np)
         num_unique_pred = np.unique(pred_max_ind_np)
         num_unique_target = np.unique(targets_cls_np)
         # print("Preds unique count:", num_unique_pred, "-- targets unique count:", num_unique_target)  # to see the distribution of pred and targets classes
         # assert np.array_equal(unique_targets, unique_preds)  # if we want to check that all different classes are predicted
-
-
-        # ##################
-        # acc_cls_ep.append(met.accuracy_score(targets_cls_np, pred_max_ind_np))
-        # recall_cls_ep.append(
-        #     met.recall_score(targets_cls_np, pred_max_ind_np, average="macro", zero_division=1)
-        # )
-        # f1_cls_ep.append(
-        #     met.f1_score(targets_cls_np, pred_max_ind_np, average="macro", zero_division=1)
-        # )
-        # precis_cls_ep.append(
-        #     met.precision_score(targets_cls_np, pred_max_ind_np, average="macro", zero_division=1)
-        # )
-        # ###################
 
         # NMS
         targets_det[:, 2:] *= torch.tensor(
@@ -470,6 +453,18 @@ def run(
     pr_cls, recall_cls, fpr_cls, f1_cls, support = scores_macro
     pr_per_class, recall_per_class, fpr_per_class, fscore_per_class, support_per_class = scores_per_class
 
+    pr_dry = pr_per_class[0]
+    pr_snowy = pr_per_class[1]
+    pr_wet = pr_per_class[2]
+
+    fpr_dry = fpr_per_class[0]
+    fpr_snowy = fpr_per_class[1]
+    fpr_wet = fpr_per_class[2]
+
+    recall_dry = recall_per_class[0]
+    recall_snowy = recall_per_class[1]
+    recall_wet = recall_per_class[2]
+
     # Print results
     pf = "%20s" + "%11i" * 2 + "%11.3g" * 4 + "%11.4g" * 4  # print format
     LOGGER.info(
@@ -477,18 +472,17 @@ def run(
     )
 
     pf_ap_class = "%20s" + "%11i" * 2 + "%11.3g" * 4  # print format
-    # print('stats', stats)
+    pf_ap_class_cls = "%20s" + "%11i" * 2 + "%11s" * 4 + "%11.3g" * 4  # print format
+    class_names = ['dry', 'snowy', 'wet']
+
     # Print results per class
     if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
         for i, c in enumerate(ap_class):
             LOGGER.info(pf_ap_class % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
-
-    pf_ap_class_cls = "%20s" + "%11i" * 2 + "%11s" * 4 + "%11.3g" * 4  # print format
-    class_names = ['dry', 'snowy', 'wet']
-    for i in range(3):
-        LOGGER.info(pf_ap_class_cls % (class_names[i], seen, support_per_class[i], "-", "-", "-", "-",
-                                       pr_per_class[i], recall_per_class[i], fpr_per_class[i],
-                                       fscore_per_class[i]))
+        for i in range(len(class_names)):
+            LOGGER.info(pf_ap_class_cls % (class_names[i], seen, support_per_class[i], "-", "-", "-", "-",
+                                           pr_per_class[i], recall_per_class[i], fpr_per_class[i],
+                                           fscore_per_class[i]))
 
     # Print speeds
     t = tuple(x / seen * 1e3 for x in dt)  # speeds per image
@@ -553,7 +547,8 @@ def run(
         maps[c] = ap[i]
 
     return (
-        (mp, mr, map50, map, pr_cls, recall_cls, *(val_loss_total.cpu() / len(dataloader)).tolist()),
+        (mp, mr, map50, map, pr_cls, recall_cls, pr_snowy, pr_wet, recall_snowy, recall_wet,
+         *(val_loss_total.cpu() / len(dataloader)).tolist()),
         maps,
         t,
     )
