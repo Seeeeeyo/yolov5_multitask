@@ -1,10 +1,8 @@
 # YOLOv5 🚀 by Ultralytics, GPL-3.0 license
 """
 Validate a trained YOLOv5 model accuracy on a custom dataset
-
 Usage:
     $ python path/to/val.py --weights yolov5s.pt --data coco128.yaml --img 640
-
 Usage - formats:
     $ python path/to/val.py --weights yolov5s.pt                 # PyTorch
                                       yolov5s.torchscript        # TorchScript
@@ -295,6 +293,7 @@ def run(
         t2 = time_sync()
         dt[0] += t2 - t1
 
+        # TODO fix issue when not training
         # Inference
         output = model(im) if training else model(im, augment=augment, val=True)
         pred_det_layers_out = output[0][1]
@@ -323,7 +322,7 @@ def run(
         targets_cls_np = targets_cls.data.cpu().numpy()
 
         assert len(pred_max_ind_np) == len(targets_cls_np)
-        assert len(pred_max_ind_np) ==  len(pred_max_log_np)
+        assert len(pred_max_ind_np) == len(pred_max_log_np)
 
         stats_cls['pred'].append(pred_max_ind_np)
         stats_cls['gt'].append(targets_cls_np)
@@ -438,14 +437,6 @@ def run(
     else:
         nt = torch.zeros(1)
 
-    # Compute classification metrics per epoch
-    #################################################
-    # acc_cls = round(sum(acc_cls_ep) / len(acc_cls_ep), 4)
-    # pr_cls = round(sum(precis_cls_ep) / len(precis_cls_ep), 4)
-    # f1_cls = round(sum(f1_cls_ep) / len(f1_cls_ep), 4)
-    # recall_cls = round(sum(recall_cls_ep) / len(recall_cls_ep), 4)
-    #################################################
-
     # Compute classification metrics
     confusion_matrix_cls.compute(stats_cls['gt'], stats_cls['pred'])
     scores_per_class, scores_macro = scores_cls(stats_cls['pred'], stats_cls['gt'])
@@ -550,6 +541,7 @@ def run(
         (mp, mr, map50, map, pr_cls, recall_cls, pr_snowy, pr_wet, recall_snowy, recall_wet,
          *(val_loss_total.cpu() / len(dataloader)).tolist()),
         maps,
+        stats_cls,
         t,
     )
 

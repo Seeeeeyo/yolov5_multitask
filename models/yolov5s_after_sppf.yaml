@@ -52,6 +52,6 @@ class_head:
   [
     [9, 1, Classify, [512,3]],     # 9.1 - 24 - out=bx3
 
-    [[17, 20, 23], 1, Detect, [nc, anchors]]  # 26 --- Detect(P3, P4, P5)
+    [[17, 20, 23], 1, Detect, [nc, anchors]]  # 25 --- Detect(P3, P4, P5)
   ]
 

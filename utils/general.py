@@ -1258,6 +1258,21 @@ def increment_path(path, exist_ok=False, sep="", mkdir=False):
 
     return path
 
+def path_fiftyone(path, exist_ok=False, sep="", mkdir=False):
+    path = Path(path)  # os-agnostic
+    if path.exists() and not exist_ok:
+        path, suffix = (
+            (path.with_suffix(""), path.suffix) if path.is_file() else (path, "")
+        )
+        p = f"{path}51"  # increment path
+        path = Path(p)
+        print('path', path)
+
+    if mkdir:
+        path.mkdir(parents=True, exist_ok=True)  # make directory
+
+    return path
+
 
 # OpenCV Chinese-friendly functions ------------------------------------------------------------------------------------
 imshow_ = cv2.imshow  # copy to avoid recursion errors

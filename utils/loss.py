@@ -152,18 +152,19 @@ class ComputeLoss:
         lbox = torch.zeros(1, device=self.device)  # box loss
         lobj = torch.zeros(1, device=self.device)  # object loss
 
-        # Useless for now
-        focal_loss_mtl = torch.zeros(1, device= self.device)  # classif loss
+        lcls_mtl = torch.zeros(1, device=self.device)  # classif loss
+        # focal_loss_mtl = torch.zeros(1, device= self.device)  # classif focal loss
         tcls, tbox, indices, anchors = self.build_targets(
             det_pred, targets_det
         )  # targets
 
         # Scene classification loss (for 1 classification now, will extend it later)
         # lcls_mtl = torch.zeros(1, device=self.device)  # class loss (scene classification)
-        lcls_mtl = self.CEloss(cls_pred, targets_cls)
-        pt = torch.exp(-lcls_mtl)
-        # TODO decide whether we mean over the batch or not with ((1 - pt) ** 3 * lcls_mtl).mean()
-        focal_loss_mtl += ((1 - pt) ** 3 * lcls_mtl).mean()  # mean over the batch
+        assert cls_pred.shape[1] == 3  # because 3 classes, ! logit for each
+        lcls_mtl += self.CEloss(cls_pred, targets_cls).mean()
+        # pt = torch.exp(-lcls_mtl)
+        # TODO decide whether we mean over the batch or not with ((1 - pt) ** 3 * lcls_mtl)."""mean()"""
+        # focal_loss_mtl += ((1 - pt) ** 3 * lcls_mtl).mean()  # mean over the batch
 
         # Object detection Losses
         for i, pi in enumerate(det_pred):  # layer index, layer predictions
@@ -227,11 +228,11 @@ class ComputeLoss:
         # TODO verify the lcls_mtl has to be multiplied by "bs" as the other losses
         return (
             (lbox + lobj + lcls) * bs,
-            # lcls_mtl,
-            focal_loss_mtl,
+            lcls_mtl,
+            # focal_loss_mtl,
             torch.cat((lbox, lobj, lcls)).detach(),
-            # lcls_mtl.detach(),
-            focal_loss_mtl.detach()
+            lcls_mtl.detach(),
+            # focal_loss_mtl.detach()
         )
 
     def build_targets(self, p, targets):

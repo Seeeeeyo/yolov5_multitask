@@ -50,6 +50,7 @@ from utils.general import (
     colorstr,
     cv2,
     increment_path,
+    path_fiftyone,
     non_max_suppression,
     print_args,
     scale_coords,
@@ -88,6 +89,7 @@ def run(
     hide_conf=False,  # hide confidences
     half=False,  # use FP16 half-precision inference
     dnn=False,  # use OpenCV DNN for ONNX inference
+    fiftyone=False,
 ):
     source = str(source)
     save_img = not nosave and not source.endswith(".txt")  # save inference images
@@ -98,11 +100,16 @@ def run(
         source = check_file(source)  # download
 
     # Directories
-    save_dir = increment_path(Path(project) / name, exist_ok=exist_ok)  # increment run
-    (save_dir / "labels" if save_txt else save_dir).mkdir(
+    if not fiftyone:
+        save_dir = increment_path(Path(project) / name, exist_ok=exist_ok)  # increment run
+    else:
+        save_dir = path_fiftyone(Path(project) / name, exist_ok=exist_ok)
+    (save_dir / "labels_det" if save_txt else save_dir).mkdir(
         parents=True, exist_ok=True
     )  # make dir
-
+    (save_dir / "labels_cls" if save_txt else save_dir).mkdir(
+        parents=True, exist_ok=True
+    )  # make dir
     # Load model
     device = select_device(device)
     model = DetectMultiBackend(weights, device=device, dnn=dnn, data=data, fp16=half)
@@ -126,7 +133,9 @@ def run(
     dt, seen = [0.0, 0.0, 0.0], 0
     for path, im, im0s, vid_cap, s in dataset:
         t1 = time_sync()
+        # TODO reshape image to fixed shape?
         im = torch.from_numpy(im).to(device)
+        # print('im.shape', im.shape)
         im = im.half() if model.fp16 else im.float()  # uint8 to fp16/32
         im /= 255  # 0 - 255 to 0.0 - 1.0
         if len(im.shape) == 3:
@@ -173,8 +182,15 @@ def run(
                 p, im0, frame = path, im0s.copy(), getattr(dataset, "frame", 0)
 
             p = Path(p)  # to Path
+            if fiftyone:
+                pstem = 'result'
+            else:
+                pstem = p.stem
             save_path = str(save_dir / p.name)  # im.jpg
-            txt_path = str(save_dir / "labels" / p.stem) + (
+            txt_path = str(save_dir / "labels_det" / pstem) + (
+                "" if dataset.mode == "image" else f"_{frame}"
+            )  # im.txt
+            txt_path_cls = str(save_dir / "labels_cls" / pstem) + (
                 "" if dataset.mode == "image" else f"_{frame}"
             )  # im.txt
             s += "%gx%g " % im.shape[2:]  # print string
@@ -223,6 +239,14 @@ def run(
                             BGR=True,
                         )
 
+                print(predicted_class)
+                print(str(pred_max_log_np))
+
+                if save_txt:
+                    with open(f"{txt_path_cls}.txt", "w") as f:
+                        f.write(predicted_class + ',' + str(pred_max_log_np))
+
+
             # Stream results
             im0 = annotator.result()
             if view_img:
@@ -254,22 +278,23 @@ def run(
 
         # Print time (inference-only)
         LOGGER.info(f"{s}Done. ({t3 - t2:.3f}s)")
-    print('Road Condition Predicted:', predicted_class, 'with proba:', pred_max_log_np)
-    # Print results
-    t = tuple(x / seen * 1e3 for x in dt)  # speeds per image
-    LOGGER.info(
-        f"Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS per image at shape {(1, 3, *imgsz)}"
-        % t
-    )
-    if save_txt or save_img:
-        s = (
-            f"\n{len(list(save_dir.glob('labels/*.txt')))} labels saved to {save_dir / 'labels'}"
-            if save_txt
-            else ""
-        )
-        LOGGER.info(f"Results saved to {colorstr('bold', save_dir)}{s}")
+    # print('Road Condition Predicted:', predicted_class, 'with proba:', pred_max_log_np)
+    # # Print results
+    # t = tuple(x / seen * 1e3 for x in dt)  # speeds per image
+    # LOGGER.info(
+    #     f"Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS per image at shape {(1, 3, *imgsz)}"
+    #     % t
+    # )
+    # if save_txt or save_img:
+    #     s = (
+    #         f"\n{len(list(save_dir.glob('labels/*.txt')))} labels saved to {save_dir / 'labels'}"
+    #         if save_txt
+    #         else ""
+    #     )
+    #     LOGGER.info(f"Results saved to {colorstr('bold', save_dir)}{s}")
     if update:
         strip_optimizer(weights)  # update model (to fix SourceChangeWarning)
+
 
 
 def cam_show_img(img, feature_map, grads, out_name):
@@ -379,6 +404,9 @@ def parse_opt():
     )
     parser.add_argument(
         "--dnn", action="store_true", help="use OpenCV DNN for ONNX inference"
+    )
+    parser.add_argument(
+        "--fiftyone", default=False, help="Is it for fiftyone inference"
     )
     opt = parser.parse_args()
     opt.imgsz *= 2 if len(opt.imgsz) == 1 else 1  # expand

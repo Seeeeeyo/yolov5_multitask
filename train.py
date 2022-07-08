@@ -524,6 +524,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             imgs = (
                 imgs.to(device, non_blocking=True).float() / 255
             )  # uint8 to float32, 0-255 to 0.0-1.0
+            # print('shape', imgs.shape)
             assert imgs.shape[1] == 3  # RGB
             assert imgs.shape[2] == imgs.shape[3] == imgsz
 
@@ -586,7 +587,9 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 class_target_count = np.bincount(targets_cls_np)
                 # print("Preds count:",class_pred_count, "-- targets count:",class_target_count)  # to see the distribution of pred and targets classes
                 # assert np.array_equal(unique_targets, unique_preds)  # if we want to check that all different classes are predicted
+
                 acc_cls_ep.append(met.accuracy_score(targets_cls_np, pred_max_ind_np))
+
                 recall_cls_ep.append(
                     met.recall_score(
                         targets_cls_np,
@@ -670,7 +673,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             )
             final_epoch = (epoch + 1 == epochs) or stopper.possible_stop
             if not noval or final_epoch:  # Calculate mAP
-                results, maps, _ = val.run(
+                results, maps, preds_gt_probs, _ = val.run(
                     data_dict,
                     cls_train=train_csv,
                     cls_val=val_csv,
@@ -692,10 +695,11 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             if fi > best_fitness:
                 best_fitness = fi
             log_vals = (
-                list(mloss) + list(results) + lr  # train mean losses (4), val metrics (10), val losses {4), lr (3)
+                # train mean losses (4), classif acc, val metrics (10), val losses {4), lr (3)
+                list(mloss) + [acc_cls] + list(results) + lr
             )
             # print("log_vals", log_vals)
-            callbacks.run("on_fit_epoch_end", log_vals, epoch, best_fitness, fi)
+            callbacks.run("on_fit_epoch_end", log_vals, epoch, best_fitness, fi, preds_gt_probs)
 
             # Save model
             if (not nosave) or (final_epoch and not evolve):  # if save
@@ -746,7 +750,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 strip_optimizer(f)  # strip optimizers
                 if f is best:
                     LOGGER.info(f"\nValidating {f}...")
-                    results, _, _ = val.run(
+                    results, _, _, _ = val.run(
                         data_dict,
                         cls_train=train_csv,
                         cls_val=val_csv,
@@ -1078,7 +1082,8 @@ def main(opt, callbacks=Callbacks()):
             ),  # image perspective (+/- fraction), range 0-0.001
             "flipud": (1, 0.0, 1.0),  # image flip up-down (probability)
             "fliplr": (0, 0.0, 1.0),  # image flip left-right (probability)
-            "mosaic": (1, 0.0, 1.0),  # image mixup (probability)
+            # "mosaic": (1, 0.0, 1.0),  # image mixup (probability)
+            "mosaic": (0, 0.0, 0.0),
             "mixup": (1, 0.0, 1.0),  # image mixup (probability)
             "copy_paste": (1, 0.0, 1.0),
         }  # segment copy-paste (probability)

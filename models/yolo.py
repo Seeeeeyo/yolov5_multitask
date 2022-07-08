@@ -207,7 +207,7 @@ class Model(nn.Module):
             x = m(x)  # run
             y.append(x if m.i in self.save else None)  # save output
             if visualize:
-                feature_visualization(x, m.type, m.i, save_dir=visualize)
+                feature_visualization(x, m.type, m.i, save_plots=True, save_dir=visualize)
             # The classification head has to be the second to last layer
             if m.i == self.model[-2].i:  # classification head
                 pred_cls = x
@@ -322,7 +322,7 @@ class Model(nn.Module):
 
 
 def parse_model(d, ch):  # model_dict, input_channels(3)
-    # print('d', d)
+    # print('model_dict', d)
     LOGGER.info(
         f"\n{'':>3}{'from':>18}{'n':>3}{'params':>10}  {'module':<40}{'arguments':<30}"
     )

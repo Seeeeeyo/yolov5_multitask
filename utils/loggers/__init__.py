@@ -6,6 +6,7 @@ Logging utils
 import os
 import warnings
 
+import pandas as pd
 import pkg_resources as pkg
 import torch
 from torch.utils.tensorboard import SummaryWriter
@@ -59,6 +60,7 @@ class Loggers:
             "train/obj_loss",
             "train/cls_det_loss",
             "train/cls_loss",  # train loss
+            "train/cls_acc",  # train accuracy to make sure we can overfit
             # [P, R, mAP @ .5, mAP @ .5 - .95, P_cls, R_cls, P_snowy, P_wet, R_snowy, R_wet]
             "metrics/precision",
             "metrics/recall",
@@ -190,7 +192,7 @@ class Loggers:
                 {"Validation": [wandb.Image(str(f), caption=f.name) for f in files]}
             )
 
-    def on_fit_epoch_end(self, vals, epoch, best_fitness, fi):
+    def on_fit_epoch_end(self, vals, epoch, best_fitness, fi, preds_gt_probs):
         # Callback runs at the end of each fit (train+val) epoch
         x = dict(zip(self.keys, vals))
         if self.csv:
@@ -208,9 +210,15 @@ class Loggers:
             for k, v in x.items():
                 self.tb.add_scalar(k, v, epoch)
 
+        if best_fitness == fi:
+            # save predictions, ground truths and probas in a csv file
+            preds_df = pd.DataFrame(preds_gt_probs)
+            filename = self.save_dir / 'preds_val_best_epoch.csv'
+            preds_df.to_csv(filename, index=False)
+
         if self.wandb:
             if best_fitness == fi:
-                best_results = [epoch] + vals[4:14]
+                best_results = [epoch] + vals[5:15]
                 # [P, R, mAP @.5, mAP @.5-.95, P_cls, R_cls, P_snowy, P_wet, R_snowy, R_wet]
                 for i, name in enumerate(self.best_keys):
                     self.wandb.wandb_run.summary[name] = best_results[

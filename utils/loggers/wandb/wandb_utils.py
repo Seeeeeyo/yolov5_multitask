@@ -179,7 +179,7 @@ class WandbLogger:
             tags.append(str(opt.cfg.split('/')[-1]))
             if len(str(opt.freeze)) < 64:
                 if len(str(opt.freeze)) > 0:
-                    tags.append(str('fr:'+ str(opt.freeze)))
+                    tags.append(str('fr:'+ str(opt.freeze).replace(" ", "")))
             else:
                 not_freezed = []
                 for i in range(len(opt.freeze)):

@@ -197,7 +197,7 @@ class Annotator:
 
 
 def feature_visualization(
-    x, module_type, stage, n=32, save_dir=Path("runs/detect/exp")
+    x, module_type, stage, n=32, save_plots=True, save_dir=Path("runs/detect/exp")
 ):
     """
     x:              Features to be visualized
@@ -208,27 +208,28 @@ def feature_visualization(
     """
     if "Detect" not in module_type:
         batch, channels, height, width = x.shape  # batch, channels, height, width
+        # print('x.shape', x.shape)
         if height > 1 and width > 1:
             f = (
                 save_dir / f"stage{stage}_{module_type.split('.')[-1]}_features.png"
             )  # filename
+            if save_plots:
+                blocks = torch.chunk(
+                    x[0].cpu(), channels, dim=0
+                )  # select batch index 0, block by channels
+                n = min(n, channels)  # number of plots
+                fig, ax = plt.subplots(
+                    math.ceil(n / 8), 8, tight_layout=True
+                )  # 8 rows x n/8 cols
+                ax = ax.ravel()
+                plt.subplots_adjust(wspace=0.05, hspace=0.05)
+                for i in range(n):
+                    ax[i].imshow(blocks[i].squeeze())  # cmap='gray'
+                    ax[i].axis("off")
 
-            blocks = torch.chunk(
-                x[0].cpu(), channels, dim=0
-            )  # select batch index 0, block by channels
-            n = min(n, channels)  # number of plots
-            fig, ax = plt.subplots(
-                math.ceil(n / 8), 8, tight_layout=True
-            )  # 8 rows x n/8 cols
-            ax = ax.ravel()
-            plt.subplots_adjust(wspace=0.05, hspace=0.05)
-            for i in range(n):
-                ax[i].imshow(blocks[i].squeeze())  # cmap='gray'
-                ax[i].axis("off")
-
-            LOGGER.info(f"Saving {f}... ({n}/{channels})")
-            plt.savefig(f, dpi=300, bbox_inches="tight")
-            plt.close()
+                LOGGER.info(f"Saving {f}... ({n}/{channels})")
+                plt.savefig(f, dpi=300, bbox_inches="tight")
+                plt.close()
             np.save(str(f.with_suffix(".npy")), x[0].cpu().numpy())  # npy save
 
 
@@ -506,6 +507,9 @@ def plot_labels(labels, names=(), save_dir=Path("")):
     plt.savefig(save_dir / "labels.jpg", dpi=200)
     matplotlib.use("Agg")
     plt.close()
+
+
+# TODO plot labels from road condition
 
 
 def plot_evolve(
