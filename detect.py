@@ -76,7 +76,7 @@ def run(
     save_txt=False,  # save results to *.txt
     save_conf=False,  # save confidences in --save-txt labels
     save_crop=False,  # save cropped prediction boxes
-    nosave=False,  # do not save images/videos
+    nosave=True,  # do not save images/videos
     classes=None,  # filter by class: --class 0, or --class 0 2 3
     agnostic_nms=False,  # class-agnostic NMS
     augment=False,  # augmented inference
@@ -97,8 +97,8 @@ def run(
     is_file = Path(source).suffix[1:] in (IMG_FORMATS + VID_FORMATS)
     is_url = source.lower().startswith(("rtsp://", "rtmp://", "http://", "https://"))
     webcam = source.isnumeric() or source.endswith(".txt") or (is_url and not is_file)
+    # if the images are given through a yaml file (to a txt file which is a list of images)
     dir_img = source.endswith(".yaml")
-
     if is_url and is_file:
         source = check_file(source)  # download
 
@@ -198,15 +198,11 @@ def run(
                 p, im0, frame = path, im0s.copy(), getattr(dataset, "frame", 0)
 
             p = Path(p)  # to Path
-            if fiftyone:
-                pstem = 'result'
-            else:
-                pstem = p.stem
             save_path = str(save_dir / p.name)  # im.jpg
-            txt_path = str(save_dir / "labels_det" / pstem) + (
+            txt_path = str(save_dir / "labels_det" / p.stem) + (
                 "" if dataset.mode == "image" else f"_{frame}"
             )  # im.txt
-            txt_path_cls = str(save_dir / "labels_cls" / pstem) + (
+            txt_path_cls = str(save_dir / "labels_cls" / p.stem) + (
                 "" if dataset.mode == "image" else f"_{frame}"
             )  # im.txt
             s += "%gx%g " % im.shape[2:]  # print string
@@ -423,7 +419,7 @@ def parse_opt():
         "--dnn", action="store_true", help="use OpenCV DNN for ONNX inference"
     )
     parser.add_argument(
-        "--fiftyone", default=False, help="Is it for fiftyone inference"
+        "--fiftyone", action="store_true", help="Is it for fiftyone inference"
     )
     opt = parser.parse_args()
     opt.imgsz *= 2 if len(opt.imgsz) == 1 else 1  # expand

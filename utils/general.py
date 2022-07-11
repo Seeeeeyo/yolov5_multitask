@@ -1264,7 +1264,7 @@ def path_fiftyone(path, exist_ok=False, sep="", mkdir=False):
         path, suffix = (
             (path.with_suffix(""), path.suffix) if path.is_file() else (path, "")
         )
-        p = f"{path}51"  # increment path
+        p = f"{path}5151"  # increment path
         path = Path(p)
         print('path', path)
 
