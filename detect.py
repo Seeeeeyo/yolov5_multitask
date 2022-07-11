@@ -29,6 +29,7 @@ import os
 import sys
 from pathlib import Path
 import numpy as np
+import yaml
 
 import torch
 import torch.backends.cudnn as cudnn
@@ -65,7 +66,7 @@ from utils.torch_utils import select_device, time_sync
 def run(
     weights=ROOT / "yolov5s.pt",  # model.pt path(s)
     source=ROOT / "data/images",  # file/dir/URL/glob, 0 for webcam
-    data=ROOT / "data/coco128.yaml",  # dataset.yaml path
+    data=ROOT / "data/multitasks.yaml",  # dataset.yaml path
     imgsz=(640, 640),  # inference size (height, width)
     conf_thres=0.25,  # confidence threshold
     iou_thres=0.45,  # NMS IOU threshold
@@ -96,6 +97,8 @@ def run(
     is_file = Path(source).suffix[1:] in (IMG_FORMATS + VID_FORMATS)
     is_url = source.lower().startswith(("rtsp://", "rtmp://", "http://", "https://"))
     webcam = source.isnumeric() or source.endswith(".txt") or (is_url and not is_file)
+    dir_img = source.endswith(".yaml")
+
     if is_url and is_file:
         source = check_file(source)  # download
 
@@ -121,6 +124,13 @@ def run(
         view_img = check_imshow()
         cudnn.benchmark = True  # set True to speed up constant image size inference
         dataset = LoadStreams(source, img_size=imgsz, stride=stride, auto=pt)
+        bs = len(dataset)  # batch_size
+    elif dir_img:
+        with open(source, errors="ignore") as f:
+            data = yaml.safe_load(f)
+            source_txt = data["test"]
+        cudnn.benchmark = True  # set True to speed up constant image size inference
+        dataset = LoadImages(source_txt, img_size=imgsz, stride=stride, auto=pt)
         bs = len(dataset)  # batch_size
     else:
         dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=pt)
@@ -156,6 +166,12 @@ def run(
         t3 = time_sync()
         dt[1] += t3 - t2
         mapping_road_cond = {0: "Dry", 1: "Snowy", 2: "Wet"}
+        cls_pred = cls_pred.squeeze(0)
+        cls_pred = torch.unsqueeze(cls_pred, 0)
+
+        assert cls_pred.shape[0] == 1
+        assert cls_pred.shape[1] == 3  # number of classes
+
         pred_cls_logs = torch.softmax(cls_pred, dim=1)
         ped_cls_maxs = torch.max(pred_cls_logs, dim=1)
         pred_max_ind_np = ped_cls_maxs.indices.cpu().numpy()
@@ -239,12 +255,12 @@ def run(
                             BGR=True,
                         )
 
-                print(predicted_class)
-                print(str(pred_max_log_np))
 
-                if save_txt:
-                    with open(f"{txt_path_cls}.txt", "w") as f:
-                        f.write(predicted_class + ',' + str(pred_max_log_np))
+            if save_txt:
+                with open(f"{txt_path_cls}.txt", "w") as f:
+                    f.write(predicted_class + ',' + str(pred_max_log_np))
+
+            s += f"{predicted_class} {str(pred_max_log_np)}, "  # add to string
 
 
             # Stream results
@@ -321,20 +337,21 @@ def parse_opt():
         nargs="+",
         type=str,
         #default=ROOT / "yolov5s.pt",
-        default="runs/train/exp234/weights/best.pt",
+        default="runs/train/exp394/weights/best.pt",
         help="model path(s)",
     )
     parser.add_argument(
         "--source",
         type=str,
-        # default=ROOT / "data/images",
-        default="img_heatmap/data/test.jpg",
+        # default=ROOT / "data/multitasks/esmart_wip/val.txt",
+        default=ROOT / "data/multitasks.yaml",
+        # default="img_heatmap/data/test.jpg",
         help="file/dir/URL/glob, 0 for webcam",
     )
     parser.add_argument(
         "--data",
         type=str,
-        # default=ROOT / "data/coco128.yaml",
+        default=ROOT / "data/multitasks.yaml",
         help="(optional) dataset.yaml path",
     )
     parser.add_argument(
