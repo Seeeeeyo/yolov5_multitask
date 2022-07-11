@@ -301,7 +301,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     )  # plot_lr_scheduler(optimizer, scheduler, epochs)
 
     # EMA
-    ema = ModelEMA(model) if RANK in {-1, 0} else None
+    ema = ModelEMA(model) if RANK in {-1, 0} else None  # exponential moving average
 
     # Resume
     start_epoch, best_fitness = 0, 0.0
@@ -572,6 +572,9 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 # loss_items = torch.cat(
                 #     (loss_items_det, loss_items_cls.reshape(1)), dim=0
                 # )
+                # print("loss_det", loss_det)
+                # print("loss_cls", loss_cls)
+                # print(loss_total)
                 loss_items = torch.cat(
                     (loss_items_det, loss_items_cls), dim=0
                 )
@@ -621,7 +624,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 if opt.quad:
                     loss_total *= 4.0
 
-            # TODO add another backwards? one for each loss?
             # Backward
             scaler.scale(loss_total).backward()
 
