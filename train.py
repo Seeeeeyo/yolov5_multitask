@@ -75,7 +75,7 @@ from utils.loggers import Loggers
 from utils.loggers.wandb.wandb_utils import check_wandb_resume
 from utils.loss import ComputeLoss
 from utils.metrics import fitness
-from utils.plots import plot_evolve, plot_labels
+from utils.plots import plot_evolve, plot_labels, plot_labels_cls
 from utils.torch_utils import (
     EarlyStopping,
     ModelEMA,
@@ -397,6 +397,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             # model._initialize_biases(cf.to(device))
             if plots:
                 plot_labels(labels, names, save_dir)
+                names_cls = ['Dry', 'Snowy', 'Wet']
+                plot_labels_cls(labels=dataset.gt_classif, names=names_cls, save_dir=save_dir)
 
             # Anchors
             if not opt.noautoanchor:

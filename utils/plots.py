@@ -15,6 +15,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sn
+import plotly.express as px
+import plotly.graph_objects as go
 import torch
 from PIL import Image, ImageDraw, ImageFont
 
@@ -450,6 +452,24 @@ def plot_val_study(
     print(f"Saving {f}...")
     plt.savefig(f, dpi=300)
 
+
+def plot_labels_cls(labels, names, save_dir):
+    new_labels = []
+    for elem in labels:
+        new_labels.append(names[elem])
+    assert len(new_labels) == len(labels)
+    fig = go.Figure()
+    fig.add_trace(go.Histogram(x=new_labels, name="train_set", ))
+#     fig.add_trace(go.Histogram(x=ls_val, name="val_set"))
+
+    fig.update_layout(
+        title_text="Histogram of road conditions",  # title of plot
+        xaxis_title_text="Road condition",  # xaxis label
+        yaxis_title_text="Count",  # yaxis label
+        bargap=0.2,  # gap between bars of adjacent location coordinates
+        bargroupgap=0.1,  # gap between bars of the same location coordinates
+    )
+    fig.write_html(save_dir / "labels_cls.html")
 
 @try_except  # known issue https://github.com/ultralytics/yolov5/issues/5395
 @Timeout(30)  # known issue https://github.com/ultralytics/yolov5/issues/5611

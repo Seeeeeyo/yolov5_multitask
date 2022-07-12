@@ -34,7 +34,14 @@ seaborn>=0.11.0
 # Extras --------------------------------------
 ipython  # interactive notebook
 psutil  # system utilization
-thop  # FLOPs computation
+thop~=0.1.0.post2206102148
 # albumentations>=1.0.3
 # pycocotools>=2.0  # COCO mAP
 # roboflow
+
+torch~=1.13.0.dev20220623
+plotly~=5.9.0
+torchvision~=0.14.0.dev20220623
+sklearn~=0.0
+scikit-learn~=1.1.1
+pytest~=7.1.2
