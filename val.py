@@ -444,6 +444,9 @@ def run(
     pr_cls, recall_cls, fpr_cls, f1_cls, support = scores_macro
     pr_per_class, recall_per_class, fpr_per_class, fscore_per_class, support_per_class = scores_per_class
 
+    assert pr_per_class.shape == recall_per_class.shape == fpr_per_class.shape == fscore_per_class.shape == \
+           support_per_class.shape == (3, 0)
+
     pr_dry = pr_per_class[0]
     pr_snowy = pr_per_class[1]
     pr_wet = pr_per_class[2]

@@ -8,6 +8,7 @@ import warnings
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import seaborn as sn
 import numpy as np
 import pandas as pd
 import torch
@@ -213,8 +214,6 @@ class ConfusionMatrix:
 
     def plot(self, normalize=True, save_dir="", names=()):
         try:
-            import seaborn as sn
-
             array = self.matrix / (
                 (self.matrix.sum(0).reshape(1, -1) + 1e-9) if normalize else 1
             )  # normalize columns
@@ -253,7 +252,7 @@ class ConfusionMatrix:
 
 class ConfusionMatrixClassification:
     def __init__(self, nc, conf=0.25, iou_thres=0.45, class_names=['Dry', 'Snowy', 'Wet']):
-        self.matrix = np.zeros((nc, nc)) # confusion matrix for the complete
+        self.matrix = np.zeros((nc, nc))  # confusion matrix for the complete epoch
         self.nc = nc  # number of classes
         self.conf = conf
         self.iou_thres = iou_thres
@@ -272,7 +271,6 @@ class ConfusionMatrixClassification:
 
     def plot(self, normalize=True, save_dir=""):
         try:
-            import seaborn as sn
             fig = plt.figure(figsize=(12, 9), tight_layout=True)
             nc, nn = self.nc, len(self.class_names)  # number of classes, number of names
             assert nc == nn
