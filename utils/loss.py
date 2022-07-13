@@ -160,7 +160,7 @@ class ComputeLoss:
 
         # Scene classification loss (for 1 classification now, will extend it later)
         # lcls_mtl = torch.zeros(1, device=self.device)  # class loss (scene classification)
-        assert cls_pred.shape[1] == 3  # because 3 classes, ! logit for each
+        assert cls_pred.shape[1] == 3  # because 3 classes, 1 logit for each
         lcls_mtl += self.CEloss(cls_pred, targets_cls).mean()
         # pt = torch.exp(-lcls_mtl)
         # TODO decide whether we mean over the batch or not with ((1 - pt) ** 3 * lcls_mtl)."""mean()"""
