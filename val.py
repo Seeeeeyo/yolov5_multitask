@@ -198,7 +198,8 @@ def run(
     is_coco = isinstance(data.get("val"), str) and data["val"].endswith(
         f"coco{os.sep}val2017.txt"
     )  # COCO dataset
-    nc = 1 if single_cls else int(data["nc"])  # number of classes
+    nc = 1 if single_cls else int(data["nc"])  # number of classes (detection)
+    nc_cls = int(data["nc_cls"])  # number of classes (classification)
     iouv = torch.linspace(0.5, 0.95, 10, device=device)  # iou vector for mAP@0.5:0.95
     niou = iouv.numel()
 
@@ -208,6 +209,12 @@ def run(
             ncm = model.model.nc
             assert ncm == nc, (
                 f"{weights[0]} ({ncm} classes) trained on different --data than what you passed ({nc} "
+                f"classes). Pass correct combination of --weights and --data that are trained together."
+            )
+
+            ncm_cls = model.model.nc_cls
+            assert ncm_cls == nc_cls, (
+                f"{weights[0]} ({ncm_cls} classes) trained on different --data than what you passed ({nc_cls} "
                 f"classes). Pass correct combination of --weights and --data that are trained together."
             )
         model.warmup(imgsz=(1 if pt else batch_size, 3, imgsz, imgsz))  # warmup
@@ -223,6 +230,7 @@ def run(
             stride,
             opt.cls_train,
             opt.cls_val,
+            data["names_cls"],
             single_cls,
             pad=pad,
             rect=rect,
@@ -239,7 +247,13 @@ def run(
         )
     }
 
-    confusion_matrix_cls = ConfusionMatrixClassification(nc=3)
+    confusion_matrix_cls = ConfusionMatrixClassification(nc=nc_cls)
+    names_cls = {
+        k: v
+        for k, v in enumerate(
+            model.names_cls if hasattr(model, "names_cls") else model.module.names_cls
+        )
+    }
 
     class_map = coco80_to_coco91_class() if is_coco else list(range(1000))
     s = ("%20s" + "%11s" * 10) % (
@@ -266,12 +280,6 @@ def run(
         0.0,
         0.0,
     )
-    # classification (new head)
-    recall_cls_ep = []
-    f1_cls_ep = []
-    precis_cls_ep = []
-    acc_cls_ep = []
-    fp_cls_ep = []
 
     loss_det = torch.zeros(3, device=device)
     loss_cls = torch.zeros(1, device=device)
@@ -444,20 +452,34 @@ def run(
     pr_cls, recall_cls, fpr_cls, f1_cls, support = scores_macro
     pr_per_class, recall_per_class, fpr_per_class, fscore_per_class, support_per_class = scores_per_class
 
-    assert pr_per_class.shape == recall_per_class.shape == fpr_per_class.shape == fscore_per_class.shape == \
-           support_per_class.shape == (3, 0)
+    # assert pr_per_class.shape == recall_per_class.shape == fpr_per_class.shape == fscore_per_class.shape == \
+    #        support_per_class.shape == (nc_cls, 0)
 
-    pr_dry = pr_per_class[0]
-    pr_snowy = pr_per_class[1]
-    pr_wet = pr_per_class[2]
+    if nc_cls == 3:
+        pr_dry = pr_per_class[0]
+        pr_snowy = pr_per_class[1]
+        pr_wet = pr_per_class[2]
 
-    fpr_dry = fpr_per_class[0]
-    fpr_snowy = fpr_per_class[1]
-    fpr_wet = fpr_per_class[2]
+        fpr_dry = fpr_per_class[0]
+        fpr_snowy = fpr_per_class[1]
+        fpr_wet = fpr_per_class[2]
 
-    recall_dry = recall_per_class[0]
-    recall_snowy = recall_per_class[1]
-    recall_wet = recall_per_class[2]
+        recall_dry = recall_per_class[0]
+        recall_snowy = recall_per_class[1]
+        recall_wet = recall_per_class[2]
+    else:
+        pr_dry = pr_per_class[0]
+        pr_unsafe = pr_per_class[1]
+        # pr_wet = pr_per_class[2]
+
+        fpr_dry = fpr_per_class[0]
+        fpr_unsafe = fpr_per_class[1]
+        # fpr_wet = fpr_per_class[2]
+
+        recall_dry = recall_per_class[0]
+        recall_unsafe = recall_per_class[1]
+        # recall_wet = recall_per_class[2]
+
 
     # Print results
     pf = "%20s" + "%11i" * 2 + "%11.3g" * 4 + "%11.4g" * 4  # print format
@@ -467,14 +489,13 @@ def run(
 
     pf_ap_class = "%20s" + "%11i" * 2 + "%11.3g" * 4  # print format
     pf_ap_class_cls = "%20s" + "%11i" * 2 + "%11s" * 4 + "%11.3g" * 4  # print format
-    class_names = ['dry', 'snowy', 'wet']
 
     # Print results per class
     if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
         for i, c in enumerate(ap_class):
             LOGGER.info(pf_ap_class % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
-        for i in range(len(class_names)):
-            LOGGER.info(pf_ap_class_cls % (class_names[i], seen, support_per_class[i], "-", "-", "-", "-",
+        for i in range(nc_cls):
+            LOGGER.info(pf_ap_class_cls % (names_cls[i], seen, support_per_class[i], "-", "-", "-", "-",
                                            pr_per_class[i], recall_per_class[i], fpr_per_class[i],
                                            fscore_per_class[i]))
 
@@ -490,7 +511,7 @@ def run(
     # Plots
     if plots:
         confusion_matrix.plot(save_dir=save_dir, names=list(names.values()))
-        confusion_matrix_cls.plot(save_dir=save_dir)
+        confusion_matrix_cls.plot(save_dir=save_dir, names=list(names_cls.values()))
         callbacks.run("on_val_end")
 
     # Save JSON
@@ -540,13 +561,23 @@ def run(
     for i, c in enumerate(ap_class):
         maps[c] = ap[i]
 
-    return (
-        (mp, mr, map50, map, pr_cls, recall_cls, pr_snowy, pr_wet, recall_snowy, recall_wet,
-         *(val_loss_total.cpu() / len(dataloader)).tolist()),
-        maps,
-        stats_cls,
-        t,
-    )
+    if nc_cls == 3:
+        return (
+            (mp, mr, map50, map, pr_cls, recall_cls, pr_snowy, pr_wet, recall_snowy, recall_wet,
+             *(val_loss_total.cpu() / len(dataloader)).tolist()),
+            maps,
+            stats_cls,
+            t,
+        )
+    else:
+        return (
+            (mp, mr, map50, map, pr_cls, recall_cls, pr_dry, pr_unsafe, recall_dry, recall_unsafe,
+             *(val_loss_total.cpu() / len(dataloader)).tolist()),
+            maps,
+            stats_cls,
+            t,
+        )
+
 
 
 def parse_opt():

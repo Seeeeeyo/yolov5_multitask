@@ -116,7 +116,7 @@ def run(
     # Load model
     device = select_device(device)
     model = DetectMultiBackend(weights, device=device, dnn=dnn, data=data, fp16=half)
-    stride, names, pt = model.stride, model.names, model.pt
+    stride, names, names_cls, pt = model.stride, model.names, model.names_cls, model.pt
     imgsz = check_img_size(imgsz, s=stride)  # check image size
 
     # Dataloader
@@ -165,19 +165,18 @@ def run(
         # TODO add test to make sure the preds have the correct shape
         t3 = time_sync()
         dt[1] += t3 - t2
-        mapping_road_cond = {0: "Dry", 1: "Snowy", 2: "Wet"}
         cls_pred = cls_pred.squeeze(0)
         cls_pred = torch.unsqueeze(cls_pred, 0)
 
         assert cls_pred.shape[0] == 1
-        assert cls_pred.shape[1] == 3  # number of classes
+        assert cls_pred.shape[1] == names_cls  # number of classes
 
         pred_cls_logs = torch.softmax(cls_pred, dim=1)
         ped_cls_maxs = torch.max(pred_cls_logs, dim=1)
         pred_max_ind_np = ped_cls_maxs.indices.cpu().numpy()
         pred_max_log_np = round(ped_cls_maxs.values.cpu().numpy()[0], 2)
         class_pred_count = np.bincount(pred_max_ind_np)
-        predicted_class = mapping_road_cond[pred_max_ind_np[0]]
+        predicted_class = names_cls[pred_max_ind_np[0]]
 
         # NMS
         pred = non_max_suppression(

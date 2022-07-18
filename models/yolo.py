@@ -126,8 +126,8 @@ class Detect(nn.Module):
 class Model(nn.Module):
     # YOLOv5 model
     def __init__(
-        self, cfg="yolov5s_complex.yaml", ch=3, nc=None, anchors=None
-    ):  # model, input channels, number of classes
+        self, cfg="yolov5s_complex.yaml", ch=3, nc=None, anchors=None, nc_cls=None,
+    ):  # model, input channels, number of classes, anchors, number of cls classes
         super().__init__()
         if isinstance(cfg, dict):
             self.yaml = cfg  # model dict
@@ -146,10 +146,16 @@ class Model(nn.Module):
         if anchors:
             LOGGER.info(f"Overriding model.yaml anchors with anchors={anchors}")
             self.yaml["anchors"] = round(anchors)  # override yaml value
+
+        # print("self.yaml['nc_cls']", self.yaml["nc_cls"])
+        if nc_cls and nc_cls != self.yaml["nc_cls"]:
+            LOGGER.info(f"Overriding model.yaml nc_cls={self.yaml['nc_cls']} with nc_cls={nc_cls}")
+            self.yaml["nc_cls"] = nc_cls  # override yaml value
         self.model, self.save = parse_model(
             deepcopy(self.yaml), ch=[ch]
         )  # model, savelist
         self.names = [str(i) for i in range(self.yaml["nc"])]  # default names
+        self.names_cls = [str(i) for i in range(self.yaml["nc_cls"])]  # default names
         self.inplace = self.yaml.get("inplace", True)
 
         # Build strides, anchors
@@ -326,9 +332,10 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
     LOGGER.info(
         f"\n{'':>3}{'from':>18}{'n':>3}{'params':>10}  {'module':<40}{'arguments':<30}"
     )
-    anchors, nc, gd, gw = (
+    anchors, nc, nc_cls, gd, gw = (
         d["anchors"],
         d["nc"],
+        d["nc_cls"],
         d["depth_multiple"],
         d["width_multiple"],
     )

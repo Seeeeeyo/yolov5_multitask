@@ -52,11 +52,6 @@ from utils.general import (
 )
 from utils.torch_utils import torch_distributed_zero_first
 
-# Classification parameters
-# Road Conditions
-mapping_road_cond = {"dry": 0, "snowy": 1, "wet": 2}
-num_class_road_cond = 3
-
 # Parameters
 HELP_URL = "https://github.com/ultralytics/yolov5/wiki/Train-Custom-Data"
 IMG_FORMATS = (
@@ -150,6 +145,7 @@ def create_dataloader(
     stride,
     train_csv,
     val_csv,
+    names_cls,
     single_cls=False,
     hyp=None,
     augment=False,
@@ -173,6 +169,7 @@ def create_dataloader(
             path,
             train_csv,
             val_csv,
+            names_cls,
             imgsz,
             batch_size,
             augment=augment,  # augmentation
@@ -186,7 +183,6 @@ def create_dataloader(
             prefix=prefix,
         )
 
-    # print('dataset', dataset)
     batch_size = min(batch_size, len(dataset))
     nd = torch.cuda.device_count()  # number of CUDA devices
     nw = min(
@@ -541,6 +537,7 @@ class LoadImagesAndLabelsAndClasses(Dataset):
         path,
         train_csv,
         val_csv,
+        names_cls,
         img_size=640,
         batch_size=16,
         augment=False,
@@ -567,6 +564,7 @@ class LoadImagesAndLabelsAndClasses(Dataset):
         self.albumentations = Albumentations() if augment else None
         self.train_csv = train_csv
         self.val_csv = val_csv
+        self.names_cls = names_cls
 
         try:
             f = []  # image files
@@ -777,8 +775,13 @@ class LoadImagesAndLabelsAndClasses(Dataset):
                     "A 'na' value is in the classification label file (csv) OR a picture has no cls label."
                     "The dataloader doesn't handle these."
                 )
-
-            x[key].append(mapping_road_cond[road_cond_class])
+            if len(self.names_cls) == 2:  # if binary classification. Safe or unsafe
+                if road_cond_class == "snowy" or road_cond_class == "wet":
+                    x[key].append(1)   # unsafe
+                else:
+                    x[key].append(self.names_cls.index(road_cond_class))  # safe
+            else:
+                x[key].append(self.names_cls.index(road_cond_class))
 
         assert count_na == 0  # number of na values in the ground truth labels
 
@@ -787,8 +790,8 @@ class LoadImagesAndLabelsAndClasses(Dataset):
             road_cond = value[3]
             class_targets_arr.append(road_cond)
             assert road_cond in range(
-                num_class_road_cond
-            )  # make sure that the ground truth classes in the dataloader are in the range of the total number of classes
+                len(self.names_cls)
+            )  # check that the ground truth classes in the dataloader are in the range of the total number of classes
 
         # TODO uncomment this when swchitching back to normal dataset (not the tiny one)
         # for value in mapping_road_cond.values():

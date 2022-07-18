@@ -7,10 +7,11 @@ test: data/multitasks/esmart_wip/val.txt     # test images (optional)
 # detection task
 nc: 10
 # classification task
-nc_cls: 3
+nc_cls: 2
 
 # class names
 # detection task
 names: [ 'speed_limit', "rw_tcd", "highway",  "interchange", "urban","rural-paved", "rural-dirt", "parking", "res1", "res2"]
 # classification task
-names_cls: [ 'dry','snowy', 'wet']
+#names_cls: [ 'dry','snowy', 'wet']
+names_cls: [ 'dry','unsafe']
