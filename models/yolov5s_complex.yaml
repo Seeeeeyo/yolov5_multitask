@@ -2,6 +2,7 @@
 
 # Parameters
 nc: 80  # number of classes
+nc_cls: 3  # number of classes for classification task
 depth_multiple: 0.33  # model depth multiple
 width_multiple: 0.50  # layer channel multiple
 anchors:
@@ -54,7 +55,7 @@ class_head:
     [ 24, 1, nn.Upsample, [ None, 2, 'nearest' ] ], # 10.2 -- 25 --- out=bx128x40x40
     [ 17, 1, nn.AvgPool2d, [ 2 ] ], # 17.1 -- 26 --- out=bx128x40x40
     [ [ 14, 25, 26 ], 1, Concat, [ 1 ] ],  # 27 -- cat resized feature maps. out=bx384x40x40
-    [ 27, 1, Classify, [ 384,3 ] ],     # 28 -- out=bx3
+    [ 27, 1, Classify, [ 384, nc_cls] ],     # 28 -- out=bx3
 
     [ [ 17, 20, 23 ], 1, Detect, [ nc, anchors ] ]  # 29 --- Detect(P3, P4, P5)
   ]

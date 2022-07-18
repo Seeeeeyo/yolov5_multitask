@@ -2,6 +2,7 @@
 
 # Parameters
 nc: 80  # number of classes
+nc_cls: 3  # number of classes for classification task
 depth_multiple: 0.33  # model depth multiple
 width_multiple: 0.50  # layer channel multiple
 anchors:
@@ -51,8 +52,8 @@ det_head:
 class_head:
   [
     [10, 1, nn.AdaptiveAvgPool2d, [1]], # 10.1 -- 24 --- out=b x 256 x 1 x 1
-    [-1, 1, LinearSqueeze, [256,3]],   # 25 -- out= b x 3
-
+    [-1, 1, LinearSqueeze, [256, nc_cls]],   # 25 -- out= b x 3
+    # det head
     [[17, 20, 23], 1, Detect, [nc, anchors]]  # 26 --- Detect(P3, P4, P5)
   ]
 

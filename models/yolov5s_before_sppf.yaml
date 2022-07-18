@@ -2,6 +2,7 @@
 
 # Parameters
 nc: 80  # number of classes
+nc_cls: 3  # number of classes for classification task
 depth_multiple: 0.33  # model depth multiple
 width_multiple: 0.50  # layer channel multiple
 anchors:
@@ -50,8 +51,8 @@ det_head:
 # classification head
 class_head:
   [
-    [8, 1, Classify, [512,3]],     # 8.1 - 24 - out=bx3
-
+    [8, 1, Classify, [512, nc_cls]],     # 8.1 - 24 - out=bx3
+    # det head
     [[17, 20, 23], 1, Detect, [nc, anchors]]  # 26 --- Detect(P3, P4, P5)
   ]
 
