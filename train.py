@@ -952,13 +952,13 @@ def parse_opt(known=False):
     parser.add_argument(
         "--cls_train",
         type=str,
-        default=ROOT / "data/multitasks/gt_class_train.csv",
+        default=ROOT / "data/multitasks/gt_class_train_time_split.csv",
         help="Scene labels path for train set (csv)",
     )
     parser.add_argument(
         "--cls_val",
         type=str,
-        default=ROOT / "data/multitasks/gt_class_val.csv",
+        default=ROOT / "data/multitasks/gt_class_val_time_split.csv",
         help="Scene labels path for val set (csv)",
     )
 
