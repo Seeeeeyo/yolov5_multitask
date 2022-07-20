@@ -49,9 +49,13 @@ det_head:
 
 # classification head
 class_head:
-  [
-    [9, 1, Classify, [512,3]],     # 9.1 - 24 - out=bx3
+  [ # [from, number, module, [Channels out, kernel size, stride, padding]]
+    [9, 1, Conv, [1024, 3, 2]],     # 9.1 - 24 -
+    [24, 1, Conv, [512, 1, 1]],     # 9.2 - 25 -
+#    [25, 1, nn.AdaptiveAvgPool2d, [1]], #
+#    [26, 1, LinearSqueeze, [512,3]],    #
+    [25, 1, Classify, [256,3]],     # 9.3 - 26 - out=bx3
 
-    [[17, 20, 23], 1, Detect, [nc, anchors]]  # 25 --- Detect(P3, P4, P5)
+    [[17, 20, 23], 1, Detect, [nc, anchors]]  # 27 --- Detect(P3, P4, P5)
   ]
 
