@@ -15,11 +15,17 @@ import torch
 import sklearn.metrics as met
 
 
-def fitness(x):
+def fitness(x, num_classes_cls):
     # Model fitness as a weighted combination of metrics (detection and classification tasks)
-    # weights for [P, R, mAP@.5, mAP@.5-.95, P_cls, R_cls, P_snowy, P_wet, R_snowy, R_wet]
-    w = [0.0, 0.0, 0.6, 0.0, 0.0, 0.0, 0.1, 0.1, 0.1, 0.1]
-    return (x[:, :10] * w).sum(1)
+    if num_classes_cls != 2:
+        # weights for [P, R, mAP@.5, mAP@.5-.95, P_cls, R_cls, P_snowy, P_wet, R_snowy, R_wet]
+        w = [0.0, 0.0, 0.6, 0.0, 0.0, 0.0, 0.1, 0.1, 0.1, 0.1]
+        return (x[:, :10] * w).sum(1)
+    else:
+        # weights for [P, R, mAP@.5, mAP@.5-.95, P_cls, R_cls, P_dry, P_unsafe, R_dry, R_unsafe]
+        # TODO change these weights
+        w = [0.0, 0.0, 0.6, 0.0, 0.0, 0.0, 0.1, 0.1, 0.1, 0.1]
+        return (x[:, :10] * w).sum(1)
 
 
 def smooth(y, f=0.05):
@@ -251,28 +257,27 @@ class ConfusionMatrix:
 
 
 class ConfusionMatrixClassification:
-    def __init__(self, nc, conf=0.25, iou_thres=0.45, class_names=['Dry', 'Snowy', 'Wet']):
+    def __init__(self, nc, conf=0.25, iou_thres=0.45):
         self.matrix = np.zeros((nc, nc))  # confusion matrix for the complete epoch
         self.nc = nc  # number of classes
         self.conf = conf
         self.iou_thres = iou_thres
-        self.class_names = class_names
+        # self.class_names = class_names
 
     def get_matrix(self):
         return self.matrix
 
     def compute(self, groundtruth, predictions):
         from sklearn.metrics import confusion_matrix
-        names = {0: 'Dry', 1: 'Snowy', 2: 'Wet'}
         gt = np.concatenate(groundtruth, axis=0)
         preds = np.concatenate(predictions)
         cm = confusion_matrix(gt, preds, normalize=None, labels=list(range(self.nc)))
         self.matrix += cm
 
-    def plot(self, normalize=True, save_dir=""):
+    def plot(self, normalize=True, save_dir="", names=()):
         try:
             fig = plt.figure(figsize=(12, 9), tight_layout=True)
-            nc, nn = self.nc, len(self.class_names)  # number of classes, number of names
+            nc, nn = self.nc, len(names)  # number of classes, number of names
             assert nc == nn
             sn.set(font_scale=1.0 if nc < 50 else 0.8)  # for label size
             labels = (0 < nn < 99) and (nn == nc)  # apply names to ticklabels
@@ -293,8 +298,8 @@ class ConfusionMatrixClassification:
                     fmt="0.2%",
                     square=True,
                     vmin=0,
-                    xticklabels=self.class_names,
-                    yticklabels=self.class_names,
+                    xticklabels=names,
+                    yticklabels=names,
                 ).set_facecolor((1, 1, 1))
             fig.axes[0].set_xlabel("Predicted")
             fig.axes[0].set_ylabel("Ground truth")

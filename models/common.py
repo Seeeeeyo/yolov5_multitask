@@ -751,7 +751,7 @@ class AutoShape(nn.Module):
             m = (
                 self.model.model.model[-1] if self.dmb else self.model.model[-1]
             )  # Detect() NEW
-            print("detect", m)
+            # print("detect", m)
             m.stride = fn(m.stride)
             m.grid = list(map(fn, m.grid))
             if isinstance(m.anchor_grid, list):

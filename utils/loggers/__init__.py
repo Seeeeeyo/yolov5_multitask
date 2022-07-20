@@ -54,7 +54,7 @@ class Loggers:
         self.hyp = hyp
         self.logger = logger  # for printing results to console
         self.include = include
-
+        # more than 2 road conditions classes case
         self.keys = [
             "train/box_loss",
             "train/obj_loss",
@@ -92,6 +92,45 @@ class Loggers:
             "best/P_wet",
             "best/R_snowy",
             "best/R_wet",  # metrics
+        ]
+        # Binary road conditions classes case
+        self.keys_binary = [
+            "train/box_loss",
+            "train/obj_loss",
+            "train/cls_det_loss",
+            "train/cls_loss",  # train loss
+            "train/cls_acc",  # train accuracy to make sure we can overfit
+            # [P, R, mAP @ .5, mAP @ .5 - .95, P_cls, R_cls, P_dry, P_unsafe, R_dry, R_unsafe]
+            "metrics/precision",
+            "metrics/recall",
+            "metrics/mAP_0.5",
+            "metrics/mAP_0.5:0.95",
+            "metrics/prec_cls",
+            "metrics/recall_cls",
+            "metrics/P_dry",
+            "metrics/P_unsafe",
+            "metrics/R_dry",
+            "metrics/R_unsafe",  # metrics
+            "val/box_loss",
+            "val/obj_loss",
+            "val/cls_det_loss",
+            "val/cls_loss",  # val loss
+            "x/lr0",
+            "x/lr1",
+            "x/lr2",
+        ]  # params
+        self.best_keys_binary = [
+            "best/epoch",
+            "best/precision",
+            "best/recall",
+            "best/mAP_0.5",
+            "best/mAP_0.5:0.95",
+            "best/P_cls",
+            "best/R_cls",
+            "best/P_dry",
+            "best/P_unsafe",
+            "best/R_dry",
+            "best/R_unsafe",  # metrics
         ]
         for k in LOGGERS:
             setattr(self, k, None)  # init empty logger dictionary
@@ -192,16 +231,17 @@ class Loggers:
                 {"Validation": [wandb.Image(str(f), caption=f.name) for f in files]}
             )
 
-    def on_fit_epoch_end(self, vals, epoch, best_fitness, fi, preds_gt_probs):
+    def on_fit_epoch_end(self, vals, epoch, best_fitness, fi, preds_gt_probs, binary=False):
         # Callback runs at the end of each fit (train+val) epoch
-        x = dict(zip(self.keys, vals))
+        x = dict(zip(self.keys if not binary else self.keys_binary, vals))
         if self.csv:
             file = self.save_dir / "results.csv"
             n = len(x) + 1  # number of cols
             s = (
                 ""
                 if file.exists()
-                else (("%20s," * n % tuple(["epoch"] + self.keys)).rstrip(",") + "\n")
+                else (("%20s," * n % tuple(["epoch"] + (self.keys if not binary else self.keys_binary))).rstrip(",")
+                      + "\n")
             )  # add header
             with open(file, "a") as f:
                 f.write(s + ("%20.5g," * n % tuple([epoch] + vals)).rstrip(",") + "\n")
@@ -220,10 +260,18 @@ class Loggers:
             if best_fitness == fi:
                 best_results = [epoch] + vals[5:15]
                 # [P, R, mAP @.5, mAP @.5-.95, P_cls, R_cls, P_snowy, P_wet, R_snowy, R_wet]
-                for i, name in enumerate(self.best_keys):
-                    self.wandb.wandb_run.summary[name] = best_results[
-                        i
-                    ]  # log best results in the summary
+                if not binary:
+                    for i, name in enumerate(self.best_keys):
+                        self.wandb.wandb_run.summary[name] = best_results[
+                            i
+                        ]  # log best results in the summary
+                # or
+                # [P, R, mAP @.5, mAP @.5-.95, P_cls, R_cls, P_dry, P_unsafe, R_dry, R_unsafe]
+                else:
+                    for i, name in enumerate(self.best_keys_binary):
+                        self.wandb.wandb_run.summary[name] = best_results[
+                            i
+                        ]  # log best results in the summary
             self.wandb.log(x)
             self.wandb.end_epoch(best_result=best_fitness == fi)
 

@@ -180,16 +180,20 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         data_dict = data_dict or check_dataset(data)  # check if None
     print("data_dict", data_dict)
     train_path, val_path = data_dict["train"], data_dict["val"]
-    nc = 1 if single_cls else int(data_dict["nc"])  # number of classes
+    nc = 1 if single_cls else int(data_dict["nc"])  # number of classes for the detection task
+    nc_cls = data_dict["nc_cls"]  # number of classes for the classification task
     names = (
         ["item"] if single_cls and len(data_dict["names"]) != 1 else data_dict["names"]
-    )  # class names
+    )  # class names (detection)
     assert (
         len(names) == nc
     ), f"{len(names)} names found for nc={nc} dataset in {data}"  # check
     is_coco = isinstance(val_path, str) and val_path.endswith(
         "coco/val2017.txt"
     )  # COCO dataset
+
+    names_cls = (data_dict["names_cls"])  # class names (classification)
+    assert len(names_cls) == nc_cls, f"{len(names_cls)} names found for nc=_cls{nc_cls} dataset in {data}"  # check
 
     # Model
     check_suffix(weights, ".pt")  # check weights
@@ -201,7 +205,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             weights, map_location="cpu"
         )  # load checkpoint to CPU to avoid CUDA memory leak
         model = Model(
-            cfg or ckpt["model"].yaml, ch=3, nc=nc, anchors=hyp.get("anchors")
+            cfg or ckpt["model"].yaml, ch=3, nc=nc, anchors=hyp.get("anchors"), nc_cls=nc_cls,
         ).to(
             device
         )  # create
@@ -215,7 +219,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             f"Transferred {len(csd)}/{len(model.state_dict())} items from {weights}"
         )  # report
     else:
-        model = Model(cfg, ch=3, nc=nc, anchors=hyp.get("anchors")).to(device)  # create
+        model = Model(cfg, ch=3, nc=nc, anchors=hyp.get("anchors"), nc_cls=nc_cls).to(device)  # create
     amp = check_amp(model)  # check AMP
 
     # Freeze
@@ -351,6 +355,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         gs,
         opt.cls_train,
         opt.cls_val,
+        names_cls,
         single_cls,
         hyp=hyp,
         augment=True,
@@ -380,6 +385,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             gs,
             opt.cls_train,
             opt.cls_val,
+            names_cls,
             single_cls,
             hyp=hyp,
             cache=None if noval else opt.cache,
@@ -397,7 +403,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             # model._initialize_biases(cf.to(device))
             if plots:
                 plot_labels(labels, names, save_dir)
-                names_cls = ['Dry', 'Snowy', 'Wet']
                 plot_labels_cls(labels=dataset.gt_classif, names=names_cls, save_dir=save_dir)
 
             # Anchors
@@ -427,11 +432,14 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     hyp["obj"] *= (imgsz / 640) ** 2 * 3 / nl  # scale to image size and layers
     hyp["label_smoothing"] = opt.label_smoothing
     model.nc = nc  # attach number of classes to model
+    model.nc_cls = nc_cls  # attach number of classes to model
     model.hyp = hyp  # attach hyperparameters to model
     model.class_weights = (
         labels_to_class_weights(dataset.labels, nc).to(device) * nc
     )  # attach class weights
+    # TODO class weights for classification task
     model.names = names
+    model.names_cls = names_cls
     # print('names', names)
     # print('model', model)
     # torch.save(model, 'model.pt')
@@ -458,7 +466,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         0,
         0,
     )  # P, R, mAP@.5, mAP@.5-.95, pr_cls, recall_cls, val_loss(box, obj, cls_det, class_new)
-    results_cls = (0, 0)  # accuracy and f1_macro scores
     scheduler.last_epoch = start_epoch - 1  # do not move
     scaler = torch.cuda.amp.GradScaler(enabled=amp)
     stopper = EarlyStopping(patience=opt.patience)
@@ -692,10 +699,15 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                     compute_loss=compute_loss,
                 )
 
+            binary = True if nc_cls == 2 else False
+
             # Update best mAP
+            # in not binary cls: weighted combination of [P, R, mAP@.5, mAP@.5-.95, P_cls, R_cls, P_snowy,
+            #                                                                           P_wet, R_snowy, R_wet]
+            # in binary cls: [P, R, mAP@.5, mAP@.5-.95, P_cls, R_cls, P_dry, P_unsafe, R_dry, R_unsafe]
             fi = fitness(
-                np.array(results).reshape(1, -1)
-            )  # weighted combination of [P, R, mAP@.5, mAP@.5-.95, P_cls, R_cls, P_snowy, P_wet, R_snowy, R_wet]
+                np.array(results).reshape(1, -1), nc_cls
+            )
             if fi > best_fitness:
                 best_fitness = fi
             log_vals = (
@@ -703,7 +715,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 list(mloss) + [acc_cls] + list(results) + lr
             )
             # print("log_vals", log_vals)
-            callbacks.run("on_fit_epoch_end", log_vals, epoch, best_fitness, fi, preds_gt_probs)
+            callbacks.run("on_fit_epoch_end", log_vals, epoch, best_fitness, fi, preds_gt_probs, binary)
 
             # Save model
             if (not nosave) or (final_epoch and not evolve):  # if save
@@ -940,13 +952,13 @@ def parse_opt(known=False):
     parser.add_argument(
         "--cls_train",
         type=str,
-        default=ROOT / "data/multitasks/gt_class_train.csv",
+        default=ROOT / "data/multitasks/gt_class_train_time_split.csv",
         help="Scene labels path for train set (csv)",
     )
     parser.add_argument(
         "--cls_val",
         type=str,
-        default=ROOT / "data/multitasks/gt_class_val.csv",
+        default=ROOT / "data/multitasks/gt_class_val_time_split.csv",
         help="Scene labels path for val set (csv)",
     )
 
@@ -1171,10 +1183,10 @@ if __name__ == "__main__":
     print(os.getcwd())
     path_train = "data/multitasks/esmart_wip/train.cache"
     path_val = "data/multitasks/esmart_wip/val.cache"
-    # if os.path.exists(path_train):
-    #     os.remove(path_train)
-    #     print("train cache deleted")
-    # if os.path.exists(path_val):
-    #     os.remove(path_val)
-    #     print("val cache deleted")
+    if os.path.exists(path_train):
+        os.remove(path_train)
+        print("train cache deleted")
+    if os.path.exists(path_val):
+        os.remove(path_val)
+        print("val cache deleted")
     main(opt)
