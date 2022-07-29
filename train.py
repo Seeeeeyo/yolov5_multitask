@@ -183,7 +183,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     nc = 1 if single_cls else int(data_dict["nc"])  # number of classes for the detection task
     nc_cls = data_dict["nc_cls"]  # number of classes for the classification task
     names = (
-        ["item"] if single_cls and len(data_dict["names"]) != 1 else data_dict["names"]
+        ["item"] if single_cls and len( ["names"]) != 1 else data_dict["names"]
     )  # class names (detection)
     assert (
         len(names) == nc
@@ -389,11 +389,12 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             single_cls,
             hyp=hyp,
             cache=None if noval else opt.cache,
-            rect=True,
+            rect=opt.rect,
             rank=-1,
             workers=workers * 2,
             pad=0.5,
             prefix=colorstr("val: "),
+            shuffle=True,
         )[0]
 
         if not resume:
@@ -440,8 +441,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     # TODO class weights for classification task
     model.names = names
     model.names_cls = names_cls
-    # print('names', names)
-    # print('model', model)
+
     # torch.save(model, 'model.pt')
     # x = torch.randn(6, 3, 224, 224, requires_grad=True)
     # torch.onnx.export(model.cpu(), x, 'model.onnx',opset_version=11)
@@ -477,9 +477,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         f"Logging results to {colorstr('bold', save_dir)}\n"
         f"Starting training for {epochs} epochs..."
     )
-    for epoch in range(
-        start_epoch, epochs
-    ):  # epoch -------------------------------------------------------
+    for epoch in range(start_epoch, epochs):  # epoch -------------------------------------------------------
         callbacks.run("on_train_epoch_start")
         model.train()
 
@@ -517,13 +515,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         precis_cls_ep = []
         acc_cls_ep = []
 
-        for i, (
-            imgs,
-            targets_det,
-            paths,
-            shapes,
-            targets_cls,
-        ) in pbar:  # batch -------------------------------
+        for i, (imgs, targets_det, paths, shapes, targets_cls) in pbar:  # batch -------------------------------
             # print('img shape: ', imgs.shape) # [batch_size, 3, height_img, width_img]
             # print('\n')
             # print('targets shape: ', targets_det.shape) # torch.Size([204, 6])
@@ -533,6 +525,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             imgs = (
                 imgs.to(device, non_blocking=True).float() / 255
             )  # uint8 to float32, 0-255 to 0.0-1.0
+
             # print('shape', imgs.shape)
             assert imgs.shape[1] == 3  # RGB
             assert imgs.shape[2] == imgs.shape[3] == imgsz
@@ -572,8 +565,14 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             # Forward
             with torch.cuda.amp.autocast(amp):
                 pred = model(imgs)  # forward
-                # assert targets_det.shape[1] == 6
-                # assert targets_cls.shape[0] == batch_size
+                if i != nb:  # if not the last batch
+                    assert pred[1].shape == (batch_size, nc_cls)
+                    assert targets_cls.shape == (batch_size,)
+                else:
+                    assert pred[1].shape[1] == nc_cls
+                assert targets_det.shape[1] == 6
+
+
                 loss_det, loss_cls, loss_items_det, loss_items_cls = compute_loss(
                     pred, targets_det.to(device), targets_cls.to(device)
                 )  # loss scaled by batch_size
@@ -667,7 +666,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             # end batch ------------------------------------------------------------------------------------------------
 
         # classification metrics per epoch
-        acc_cls = round(sum(acc_cls_ep) / len(acc_cls_ep), 4)
+        acc_cls_train = round(sum(acc_cls_ep) / len(acc_cls_ep), 4)
         pr_cls = round(sum(precis_cls_ep) / len(precis_cls_ep), 4)
         f1_cls = round(sum(f1_cls_ep) / len(f1_cls_ep), 4)
         recall_cls = round(sum(recall_cls_ep) / len(recall_cls_ep), 4)
@@ -711,8 +710,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             if fi > best_fitness:
                 best_fitness = fi
             log_vals = (
-                # train mean losses (4), classif acc, val metrics (10), val losses {4), lr (3)
-                list(mloss) + [acc_cls] + list(results) + lr
+                # train mean losses (4), training cls acc, val metrics (11 - the last one is the val acc), val losses {4), lr (3)
+                list(mloss) + [acc_cls_train] + list(results) + lr
             )
             # print("log_vals", log_vals)
             callbacks.run("on_fit_epoch_end", log_vals, epoch, best_fitness, fi, preds_gt_probs, binary)
@@ -806,7 +805,7 @@ def parse_opt(known=False):
         "--weights", type=str, default=ROOT / "yolov5s.pt", help="initial weights path"
     )
     parser.add_argument(
-        "--cfg", type=str, default="yolov5s_avgpool_all_fm.yaml", help="model.yaml path"
+        "--cfg", type=str, default="yolov5s_before_sppf.yaml", help="model.yaml path"
     )
     parser.add_argument(
         "--data",
@@ -817,11 +816,11 @@ def parse_opt(known=False):
     parser.add_argument(
         "--hyp",
         type=str,
-        default=ROOT / "data/hyps/hyp.scratch-low.yaml",
+        default=ROOT / "data/hyps/hyp.scratch-low-yoloM.yaml",
         help="hyperparameters path",
     )
     parser.add_argument(
-        "--epochs", type=int, default=1
+        "--epochs", type=int, default=8
     )
     parser.add_argument(
         "--batch-size",
@@ -890,7 +889,7 @@ def parse_opt(known=False):
         "--optimizer",
         type=str,
         choices=["SGD", "Adam", "AdamW"],
-        default="SGD",
+        default="AdamW",
         help="optimizer",
     )
     parser.add_argument(
@@ -1181,8 +1180,8 @@ def run(**kwargs):
 if __name__ == "__main__":
     opt = parse_opt()
     print(os.getcwd())
-    path_train = "data/multitasks/esmart_wip/train.cache"
-    path_val = "data/multitasks/esmart_wip/val.cache"
+    path_train = "data/multitasks/esmart_wip/train_time_split.cache"
+    path_val = "data/multitasks/esmart_wip/val_time_split.cache"
     if os.path.exists(path_train):
         os.remove(path_train)
         print("train cache deleted")
