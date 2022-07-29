@@ -49,7 +49,7 @@ det_head:
 class_head:
   [
     # classification head
-    [1, 1, Classify, [64, nc_cls]],     # 1.1 - 24 - out=bx3
+    [4, 1, Classify, [128, nc_cls]],     # 4.1 - 24 - out=bx3
     # det head
     [[17, 20, 23], 1, Detect, [nc, anchors]]  # 25 --- Detect(P3, P4, P5)
   ]
