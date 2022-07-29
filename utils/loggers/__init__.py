@@ -56,13 +56,13 @@ class Loggers:
         self.include = include
         # more than 2 road conditions classes case
         self.keys = [
-            "train/box_loss",
+            "train/box_loss",  # 0
             "train/obj_loss",
             "train/cls_det_loss",
             "train/cls_loss",  # train loss
             "train/cls_acc",  # train accuracy to make sure we can overfit
             # [P, R, mAP @ .5, mAP @ .5 - .95, P_cls, R_cls, P_snowy, P_wet, R_snowy, R_wet]
-            "metrics/precision",
+            "metrics/precision",  # 5
             "metrics/recall",
             "metrics/mAP_0.5",
             "metrics/mAP_0.5:0.95",
@@ -72,11 +72,12 @@ class Loggers:
             "metrics/P_wet",
             "metrics/R_snowy",
             "metrics/R_wet",  # metrics
-            "val/box_loss",
+            "metrics/cls_acc_val",  # val acc
+            "val/box_loss",  # 15
             "val/obj_loss",
             "val/cls_det_loss",
             "val/cls_loss",  # val loss
-            "x/lr0",
+            "x/lr0",  # 20
             "x/lr1",
             "x/lr2",
         ]  # params
@@ -91,7 +92,8 @@ class Loggers:
             "best/P_snowy",
             "best/P_wet",
             "best/R_snowy",
-            "best/R_wet",  # metrics
+            "best/R_wet",
+            "best/cls_acc_val",  # metrics
         ]
         # Binary road conditions classes case
         self.keys_binary = [
@@ -111,9 +113,11 @@ class Loggers:
             "metrics/P_unsafe",
             "metrics/R_dry",
             "metrics/R_unsafe",  # metrics
+            "metrics/cls_acc_val",  # val acc
             "val/box_loss",
             "val/obj_loss",
             "val/cls_det_loss",
+            "val/cls_acc",  # val acc
             "val/cls_loss",  # val loss
             "x/lr0",
             "x/lr1",
@@ -130,7 +134,8 @@ class Loggers:
             "best/P_dry",
             "best/P_unsafe",
             "best/R_dry",
-            "best/R_unsafe",  # metrics
+            "best/R_unsafe",
+            "best/cls_acc_val",  # metrics
         ]
         for k in LOGGERS:
             setattr(self, k, None)  # init empty logger dictionary
@@ -258,15 +263,15 @@ class Loggers:
 
         if self.wandb:
             if best_fitness == fi:
-                best_results = [epoch] + vals[5:15]
-                # [P, R, mAP @.5, mAP @.5-.95, P_cls, R_cls, P_snowy, P_wet, R_snowy, R_wet]
+                best_results = [epoch] + vals[5:16]
+                # [P, R, mAP @.5, mAP @.5-.95, P_cls, R_cls, P_snowy, P_wet, R_snowy, R_wet, acc_val]
                 if not binary:
                     for i, name in enumerate(self.best_keys):
                         self.wandb.wandb_run.summary[name] = best_results[
                             i
                         ]  # log best results in the summary
                 # or
-                # [P, R, mAP @.5, mAP @.5-.95, P_cls, R_cls, P_dry, P_unsafe, R_dry, R_unsafe]
+                # [P, R, mAP @.5, mAP @.5-.95, P_cls, R_cls, P_dry, P_unsafe, R_dry, R_unsaf, acc_vall]
                 else:
                     for i, name in enumerate(self.best_keys_binary):
                         self.wandb.wandb_run.summary[name] = best_results[
