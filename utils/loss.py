@@ -109,7 +109,7 @@ class ComputeLoss:
             pos_weight=torch.tensor([h["obj_pw"]], device=device)
         )
 
-        CEloss = nn.CrossEntropyLoss(reduction='none').to(device)
+        CEloss = nn.CrossEntropyLoss().to(device)
 
         # Class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
         self.cp, self.cn = smooth_BCE(
@@ -162,7 +162,8 @@ class ComputeLoss:
         # Scene classification loss (for 1 classification now, will extend it later)
         # lcls_mtl = torch.zeros(1, device=self.device)  # class loss (scene classification)
         assert cls_pred.shape[1] == self.nc_cls  # because x classes, 1 logit for each
-        lcls_mtl += self.CEloss(cls_pred, targets_cls).mean()
+        lcls_mtl += self.CEloss(cls_pred, targets_cls)
+        # print(lcls_mtl)
         # pt = torch.exp(-lcls_mtl)
         # TODO decide whether we mean over the batch or not with ((1 - pt) ** 3 * lcls_mtl)."""mean()"""
         # focal_loss_mtl += ((1 - pt) ** 3 * lcls_mtl).mean()  # mean over the batch

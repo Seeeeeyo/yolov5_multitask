@@ -54,7 +54,7 @@ from utils.general import (
 from utils.metrics import ConfusionMatrix, ConfusionMatrixClassification, ap_per_class, box_iou, scores_cls
 from utils.plots import output_to_target, plot_images, plot_val_study
 from utils.torch_utils import select_device, time_sync
-
+import sklearn.metrics as met
 
 def save_one_txt(predn, save_conf, shape, file):
     # Save one txt result
@@ -223,13 +223,15 @@ def run(
         task = (
             task if task in ("train", "val", "test") else "val"
         )  # path to train/val/test images
+        print("cls_train", cls_train)
+        print("cls_val", cls_val)
         dataloader = create_dataloader(
             data[task],
             imgsz,
             batch_size,
             stride,
-            opt.cls_train,
-            opt.cls_val,
+            cls_train,
+            cls_val,
             data["names_cls"],
             single_cls,
             pad=pad,
@@ -256,7 +258,7 @@ def run(
     }
 
     class_map = coco80_to_coco91_class() if is_coco else list(range(1000))
-    s = ("%20s" + "%11s" * 10) % (
+    s = ("%20s" + "%11s" * 11) % (
         "Class",
         "Images",
         "Labels",
@@ -268,6 +270,7 @@ def run(
         "cls_R",
         "cls_fpr",
         "cls_f1",
+        "cls_acc"
     )
     # detection
     dt, p, r, f1, mp, mr, map50, map = (
@@ -280,6 +283,8 @@ def run(
         0.0,
         0.0,
     )
+
+    acc_cls_ep = []
 
     loss_det = torch.zeros(3, device=device)
     loss_cls = torch.zeros(1, device=device)
@@ -331,6 +336,8 @@ def run(
 
         assert len(pred_max_ind_np) == len(targets_cls_np)
         assert len(pred_max_ind_np) == len(pred_max_log_np)
+
+        acc_cls_ep.append(met.accuracy_score(targets_cls_np, pred_max_ind_np))
 
         stats_cls['pred'].append(pred_max_ind_np)
         stats_cls['gt'].append(targets_cls_np)
@@ -446,6 +453,7 @@ def run(
         nt = torch.zeros(1)
 
     # Compute classification metrics
+    acc_cls = round(sum(acc_cls_ep) / len(acc_cls_ep), 4)
     confusion_matrix_cls.compute(stats_cls['gt'], stats_cls['pred'])
     scores_per_class, scores_macro = scores_cls(stats_cls['pred'], stats_cls['gt'])
 
@@ -482,9 +490,9 @@ def run(
 
 
     # Print results
-    pf = "%20s" + "%11i" * 2 + "%11.3g" * 4 + "%11.4g" * 4  # print format
+    pf = "%20s" + "%11i" * 2 + "%11.3g" * 4 + "%11.4g" * 5  # print format
     LOGGER.info(
-        pf % ("all", seen, nt.sum(), mp, mr, map50, map, pr_cls, recall_cls, fpr_cls, f1_cls)
+        pf % ("all", seen, nt.sum(), mp, mr, map50, map, pr_cls, recall_cls, fpr_cls, f1_cls, acc_cls)
     )
 
     pf_ap_class = "%20s" + "%11i" * 2 + "%11.3g" * 4  # print format
@@ -563,7 +571,7 @@ def run(
 
     if nc_cls == 3:
         return (
-            (mp, mr, map50, map, pr_cls, recall_cls, pr_snowy, pr_wet, recall_snowy, recall_wet,
+            (mp, mr, map50, map, pr_cls, recall_cls, pr_snowy, pr_wet, recall_snowy, recall_wet, acc_cls,
              *(val_loss_total.cpu() / len(dataloader)).tolist()),
             maps,
             stats_cls,
@@ -571,7 +579,7 @@ def run(
         )
     else:
         return (
-            (mp, mr, map50, map, pr_cls, recall_cls, pr_dry, pr_unsafe, recall_dry, recall_unsafe,
+            (mp, mr, map50, map, pr_cls, recall_cls, pr_dry, pr_unsafe, recall_dry, recall_unsafe, acc_cls,
              *(val_loss_total.cpu() / len(dataloader)).tolist()),
             maps,
             stats_cls,

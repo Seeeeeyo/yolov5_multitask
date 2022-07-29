@@ -429,6 +429,8 @@ class DetectMultiBackend(nn.Module):
         if data:  # assign class names (optional)
             with open(data, errors="ignore") as f:
                 names = yaml.safe_load(f)["names"]
+            with open(data, errors="ignore") as f:
+                names_cls = yaml.safe_load(f)["names_cls"]
 
         if pt:  # PyTorch
             model = attempt_load(
