@@ -169,7 +169,7 @@ def run(
         cls_pred = torch.unsqueeze(cls_pred, 0)
 
         assert cls_pred.shape[0] == 1
-        assert cls_pred.shape[1] == names_cls  # number of classes
+        assert cls_pred.shape[1] == len(names_cls)  # number of classes
 
         pred_cls_logs = torch.softmax(cls_pred, dim=1)
         ped_cls_maxs = torch.max(pred_cls_logs, dim=1)
