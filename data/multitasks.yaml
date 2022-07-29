@@ -13,5 +13,5 @@ nc_cls: 3
 # detection task
 names: [ 'speed_limit', "rw_tcd", "highway",  "interchange", "urban","rural-paved", "rural-dirt", "parking", "res1", "res2"]
 # classification task
-#names_cls: [ 'dry','snowy', 'wet']
-names_cls: [ 'dry','snowy','wet']
+#names_cls: ['dry','unsafe']
+names_cls: ['dry','snowy','wet']
