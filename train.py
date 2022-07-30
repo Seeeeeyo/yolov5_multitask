@@ -107,6 +107,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         nosave,
         workers,
         freeze,
+        freeze_all_but,
         train_csv,
         val_csv,
     ) = (
@@ -124,6 +125,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         opt.nosave,
         opt.workers,
         opt.freeze,
+        opt.freeze_all_but,
         opt.cls_train,
         opt.cls_val,
     )
@@ -236,6 +238,19 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         if any(x in k for x in freeze):
             LOGGER.info(f"freezing {k}")
             v.requires_grad = False
+            # torch.save(v.data, save_dir / f"frozen_{k}.pt")
+
+    if len(freeze_all_but) > 0:
+        freeze_all_but = [
+            f"model.{x}." for x in (freeze_all_but)
+        ]  # layers to freeze
+        for k, v in model.named_parameters():
+            v.requires_grad = False  # freeze all layers
+            LOGGER.info(f"freezing {k}")
+            if any(x in k for x in freeze_all_but):
+                LOGGER.info(f"UNFREEZING {k}")
+                v.requires_grad = True
+                # torch.save(v.data, save_dir / f"frozen_{k}.pt")
 
     # Image size
     try:
@@ -816,7 +831,7 @@ def parse_opt(known=False):
     parser.add_argument(
         "--hyp",
         type=str,
-        default=ROOT / "data/hyps/hyp.scratch-low-yoloM.yaml",
+        default=ROOT / "data/hyps/hyp.scratch-low-yoloM-det.yaml",
         help="hyperparameters path",
     )
     parser.add_argument(
@@ -929,6 +944,13 @@ def parse_opt(known=False):
         type=int,
         default=[],
         help="Freeze layers: backbone=10, first3=0 1 2",
+    )
+    parser.add_argument(
+        "--freeze_all_but",
+        nargs="+",
+        type=int,
+        default=[],
+        help="Freeze all layers besides ...: backbone=10, first3=0 1 2",
     )
     parser.add_argument(
         "--save-period",
