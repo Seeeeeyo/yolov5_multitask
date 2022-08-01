@@ -177,7 +177,7 @@ class WandbLogger:
             for elem in from_user:
                 tags.append(elem)
             tags.append(str(opt.cfg.split('/')[-1]))
-            tags.append(str(opt.cls_val.split('/')[-1]).split('.')[0])
+            tags.append(str(opt.datasplit))
             if len(str(opt.freeze)) < 64:
                 if len(str(opt.freeze)) > 0:
                     tags.append(str('fr:'+ str(opt.freeze).replace(" ", "")))

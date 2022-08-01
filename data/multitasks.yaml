@@ -1,7 +1,10 @@
 # train and val data as 1) directory: path/images/, 2) file: path/images.txt, or 3) list: [path1/images/, path2/images/]
-train: data/multitasks/esmart_wip/train_time_split.txt  # x images
-val: data/multitasks/esmart_wip/val_time_split.txt      #  y images
-test: data/multitasks/esmart_wip/val_time_split.txt     # test images (optional)
+train: data/multitasks/esmart_wip/train_seq.txt  # x images
+val: data/multitasks/esmart_wip/val_seq.txt      #  y images
+#test: data/multitasks/esmart_wip/val_time_split.txt     # test images (optional)
+# train and val ground truth for the scene classification  -- Scene labels path for val set (csv)
+cls_train: data/multitasks/gt_class_train_seq.csv
+cls_val: data/multitasks/gt_class_val_seq.csv
 
 # number of classes
 # detection task
@@ -15,3 +18,16 @@ names: [ 'speed_limit', "rw_tcd", "highway",  "interchange", "urban","rural-pave
 # classification task
 #names_cls: ['dry','unsafe']
 names_cls: ['dry','snowy','wet']
+
+
+    #     "--cls_train",
+    #     type=str,
+    #     default=ROOT / "data/multitasks/gt_class_train_time_split.csv",
+    #     help="Scene labels path for train set (csv)",
+    # )
+    # parser.add_argument(
+    #     "--cls_val",
+    #     type=str,
+    #     default=ROOT / "data/multitasks/gt_class_val_time_split.csv",
+    #     help="Scene labels path for val set (csv)",
+    # )

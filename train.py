@@ -108,8 +108,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         workers,
         freeze,
         freeze_all_but,
-        train_csv,
-        val_csv,
+        datasplit
     ) = (
         Path(opt.save_dir),
         opt.epochs,
@@ -126,8 +125,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         opt.workers,
         opt.freeze,
         opt.freeze_all_but,
-        opt.cls_train,
-        opt.cls_val,
+        opt.datasplit,
     )
     callbacks.run("on_pretrain_routine_start")
 
@@ -145,16 +143,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     LOGGER.info(
         colorstr("hyperparameters: ") + ", ".join(f"{k}={v}" for k, v in hyp.items())
     )
-
-    # Save run settings
-    if not evolve:
-        with open(save_dir / "hyp.yaml", "w") as f:
-            yaml.safe_dump(hyp, f, sort_keys=False)
-        with open(save_dir / "opt.yaml", "w") as f:
-            # conversion from PosixPath to string to be able to dump it into a yaml
-            opt.cls_train = str(opt.cls_train)
-            opt.cls_val = str(opt.cls_val)
-            yaml.safe_dump(vars(opt), f, sort_keys=False)
 
     # Loggers
     data_dict = None
@@ -174,6 +162,19 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         for k in methods(loggers):
             callbacks.register_action(k, callback=getattr(loggers, k))
 
+    cls_train = data_dict['cls_train']
+    cls_val = data_dict['cls_val']
+
+    # Save run settings
+    if not evolve:
+        with open(save_dir / "hyp.yaml", "w") as f:
+            yaml.safe_dump(hyp, f, sort_keys=False)
+        with open(save_dir / "opt.yaml", "w") as f:
+            # conversion from PosixPath to string to be able to dump it into a yaml
+            opt.cls_train = str(cls_train)
+            opt.cls_val = str(cls_val)
+            yaml.safe_dump(vars(opt), f, sort_keys=False)
+
     # Config
     plots = not evolve and not opt.noplots  # create plots
     cuda = device.type != "cpu"
@@ -185,7 +186,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     nc = 1 if single_cls else int(data_dict["nc"])  # number of classes for the detection task
     nc_cls = data_dict["nc_cls"]  # number of classes for the classification task
     names = (
-        ["item"] if single_cls and len( ["names"]) != 1 else data_dict["names"]
+        ["item"] if single_cls and len(["names"]) != 1 else data_dict["names"]
     )  # class names (detection)
     assert (
         len(names) == nc
@@ -576,11 +577,13 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                     imgs = nn.functional.interpolate(
                         imgs, size=ns, mode="bilinear", align_corners=False
                     )
-
+            # print("nb", nb)
             # Forward
             with torch.cuda.amp.autocast(amp):
                 pred = model(imgs)  # forward
-                if i != nb:  # if not the last batch
+                if (i+1) != nb:  # if not the last batch
+                    # print(i)
+                    # print(pred[1].shape)
                     assert pred[1].shape == (batch_size, nc_cls)
                     assert targets_cls.shape == (batch_size,)
                 else:
@@ -700,8 +703,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             if not noval or final_epoch:  # Calculate mAP
                 results, maps, preds_gt_probs, _ = val.run(
                     data_dict,
-                    cls_train=train_csv,
-                    cls_val=val_csv,
+                    cls_train=cls_train,
+                    cls_val=cls_val,
                     batch_size=batch_size // WORLD_SIZE * 2,
                     imgsz=imgsz,
                     model=ema.ema,
@@ -782,8 +785,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                     LOGGER.info(f"\nValidating {f}...")
                     results, _, _, _ = val.run(
                         data_dict,
-                        cls_train=train_csv,
-                        cls_val=val_csv,
+                        cls_train=cls_train,
+                        cls_val=cls_val,
                         batch_size=batch_size // WORLD_SIZE * 2,
                         imgsz=imgsz,
                         model=attempt_load(f, device).half(),
@@ -820,7 +823,7 @@ def parse_opt(known=False):
         "--weights", type=str, default=ROOT / "yolov5s.pt", help="initial weights path"
     )
     parser.add_argument(
-        "--cfg", type=str, default="yolov5s_before_sppf.yaml", help="model.yaml path"
+        "--cfg", type=str, help="model.yaml path"
     )
     parser.add_argument(
         "--data",
@@ -831,7 +834,7 @@ def parse_opt(known=False):
     parser.add_argument(
         "--hyp",
         type=str,
-        default=ROOT / "data/hyps/hyp.scratch-low-yoloM-det.yaml",
+        # default=ROOT / "data/hyps/hyp.scratch-low-yoloM-det.yaml",
         help="hyperparameters path",
     )
     parser.add_argument(
@@ -971,16 +974,9 @@ def parse_opt(known=False):
         help="The number of classification tasks to perform.",
     )
     parser.add_argument(
-        "--cls_train",
+        "--datasplit",
         type=str,
-        default=ROOT / "data/multitasks/gt_class_train_time_split.csv",
-        help="Scene labels path for train set (csv)",
-    )
-    parser.add_argument(
-        "--cls_val",
-        type=str,
-        default=ROOT / "data/multitasks/gt_class_val_time_split.csv",
-        help="Scene labels path for val set (csv)",
+        help="Datasplit used",
     )
 
     # Weights & Biases arguments
