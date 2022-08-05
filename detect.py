@@ -34,6 +34,13 @@ import yaml
 import torch
 import torch.backends.cudnn as cudnn
 
+from captum.attr import IntegratedGradients
+from captum.attr import GradientShap
+from captum.attr import Occlusion
+from captum.attr import NoiseTunnel
+from captum.attr import visualization as viz
+
+
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLOv5 root directory
 if str(ROOT) not in sys.path:
@@ -116,6 +123,8 @@ def run(
     # Load model
     device = select_device(device)
     model = DetectMultiBackend(weights, device=device, dnn=dnn, data=data, fp16=half)
+    names_cls = ['dry', 'snowy', 'wet']
+    model.names_cls = names_cls
     stride, names, names_cls, pt = model.stride, model.names, model.names_cls, model.pt
     imgsz = check_img_size(imgsz, s=stride)  # check image size
 
@@ -177,6 +186,64 @@ def run(
         pred_max_log_np = round(ped_cls_maxs.values.cpu().numpy()[0], 2)
         class_pred_count = np.bincount(pred_max_ind_np)
         predicted_class = names_cls[pred_max_ind_np[0]]
+
+        # https://github.com/pytorch/captum/blob/master/tutorials/Resnet_TorchVision_Interpret.ipynb
+        import tkinter
+        import matplotlib
+        from matplotlib.colors import LinearSegmentedColormap
+
+        matplotlib.use('TkAgg')
+        prediction_score, pred_label_idx = torch.topk(pred_cls_logs, 1)
+        pred_label_idx.squeeze_()
+
+        integrated_gradients = IntegratedGradients(model)
+        #
+        # attributions_ig = integrated_gradients.attribute(im, target=pred_label_idx, n_steps=40)
+
+        default_cmap = LinearSegmentedColormap.from_list('custom blue',
+                                                         [(0, '#ffffff'),
+                                                          (0.25, '#000000'),
+                                                          (1, '#000000')], N=256)
+        #
+        # _ = viz.visualize_image_attr(np.transpose(attributions_ig.squeeze().cpu().detach().numpy(), (1, 2, 0)),
+        #                              np.transpose(im.squeeze().cpu().detach().numpy(), (1, 2, 0)),
+        #                              method='heat_map',
+        #                              cmap=default_cmap,
+        #                              show_colorbar=True,
+        #                              sign='positive',
+        #                              outlier_perc=1)
+
+        # noise_tunnel = NoiseTunnel(integrated_gradients)
+        #
+        # attributions_ig_nt = noise_tunnel.attribute(im, nt_samples=10, nt_type='smoothgrad_sq',
+        #                                             target=pred_label_idx, internal_batch_size=1,)
+        #
+        # _ = viz.visualize_image_attr_multiple(
+        #     np.transpose(attributions_ig_nt.squeeze().cpu().detach().numpy(), (1, 2, 0)),
+        #     np.transpose(im.squeeze().cpu().detach().numpy(), (1, 2, 0)),
+        #     ["original_image", "heat_map"],
+        #     ["all", "positive"],
+        #     cmap=default_cmap,
+        #     show_colorbar=True,
+        #     titles=["Original Image", "Heat Map -- " + str(predicted_class)],
+        # )
+
+        occlusion = Occlusion(model)
+
+        attributions_occ = occlusion.attribute(im,
+                                               strides=(3, 50, 50),
+                                               target=pred_label_idx,
+                                               sliding_window_shapes=(3, 60, 60),
+                                               baselines=0)
+        _ = viz.visualize_image_attr_multiple(
+            np.transpose(attributions_occ.squeeze().cpu().detach().numpy(), (1, 2, 0)),
+            np.transpose(im.squeeze().cpu().detach().numpy(), (1, 2, 0)),
+            ["original_image", "heat_map"],
+            ["all", "positive"],
+            show_colorbar=True,
+            outlier_perc=2,
+            titles=["Original Image", "Heat Map -- " + str(predicted_class) + " -- " + str(pred_max_log_np)],
+            )
 
         # NMS
         pred = non_max_suppression(
@@ -287,6 +354,8 @@ def run(
                         )
                     vid_writer[i].write(im0)
 
+
+
         # Print time (inference-only)
         LOGGER.info(f"{s}Done. ({t3 - t2:.3f}s)")
     # print('Road Condition Predicted:', predicted_class, 'with proba:', pred_max_log_np)
@@ -305,7 +374,6 @@ def run(
     #     LOGGER.info(f"Results saved to {colorstr('bold', save_dir)}{s}")
     if update:
         strip_optimizer(weights)  # update model (to fix SourceChangeWarning)
-
 
 
 def cam_show_img(img, feature_map, grads, out_name):
@@ -332,21 +400,21 @@ def parse_opt():
         nargs="+",
         type=str,
         #default=ROOT / "yolov5s.pt",
-        default="runs/train/exp394/weights/best.pt",
+        # default="runs/train/exp394/weights/best.pt",
         help="model path(s)",
     )
     parser.add_argument(
         "--source",
         type=str,
         # default=ROOT / "data/multitasks/esmart_wip/val.txt",
-        default=ROOT / "data/multitasks.yaml",
+        # default=ROOT / "data/multitasks.yaml",
         # default="img_heatmap/data/test.jpg",
         help="file/dir/URL/glob, 0 for webcam",
     )
     parser.add_argument(
         "--data",
         type=str,
-        default=ROOT / "data/multitasks.yaml",
+        # default=ROOT / "data/multitasks.yaml",
         help="(optional) dataset.yaml path",
     )
     parser.add_argument(
