@@ -890,8 +890,14 @@ class LoadImagesAndLabelsAndClasses(Dataset):
                 labels[:, 1:5], w=img.shape[1], h=img.shape[0], clip=True, eps=1e-3
             )
 
+        if hyp["cut_top"]:
+            img = img[int(img.shape[0] / 2):, :, :]
+
+        if hyp["cut_sides"]:
+            img = img[:, int(img.shape[1]/10):int(9*img.shape[1]/10), :]
+
         if self.augment:
-            # Albumentations
+            # Albuentations
             img, labels = self.albumentations(img, labels)
             nl = len(labels)  # update after albumentations
 
