@@ -178,15 +178,16 @@ class WandbLogger:
                 tags.append(elem)
             tags.append(str(opt.cfg.split('/')[-1]))
             tags.append(str(opt.datasplit))
-            if len(str(opt.freeze)) < 64:
-                if len(str(opt.freeze)) > 0:
-                    tags.append(str('fr:'+ str(opt.freeze).replace(" ", "")))
-            else:
-                not_freezed = []
-                for i in range(len(opt.freeze)):
-                    if opt.freeze[i] != i:
-                        not_freezed.append(i)
-                tags.append(str('fr:all_but_' + str(not_freezed)))
+            if len(str(opt.freeze)) < 64 and len(str(opt.freeze)) > 1:
+                # if len(str(opt.freeze)) > 1:
+                tags.append(str('fr:'+ str(opt.freeze).replace(" ", "")))
+            elif len(str(opt.freeze_all_but)) > 0:
+                tags.append(str('fr_all_but:' + str(opt.freeze_all_but).replace(" ", "")))
+                # not_freezed = []
+                # for i in range(len(opt.freeze)):
+                #     if opt.freeze[i] != i:
+                #         not_freezed.append(i)
+                # tags.append(str('fr:all_but_' + str(not_freezed)))
             self.wandb_run = (
                 wandb.init(
                     config=opt,

@@ -387,7 +387,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         quad=opt.quad,
         prefix=colorstr("train: "),
         shuffle=True,
-        only_cls=only_cls
     )
 
     mlc = int(np.concatenate(dataset.labels, 0)[:, 0].max())  # max label class
