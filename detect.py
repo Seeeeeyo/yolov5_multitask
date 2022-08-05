@@ -98,6 +98,7 @@ def run(
     half=False,  # use FP16 half-precision inference
     dnn=False,  # use OpenCV DNN for ONNX inference
     fiftyone=False,
+    heatmap=False,
 ):
     source = str(source)
     save_img = not nosave and not source.endswith(".txt")  # save inference images
@@ -171,7 +172,6 @@ def run(
         preds = model(im, augment=augment, visualize=visualize)
         det_pred = preds[0][0]
         cls_pred = preds[1]
-        # TODO add test to make sure the preds have the correct shape
         t3 = time_sync()
         dt[1] += t3 - t2
         cls_pred = cls_pred.squeeze(0)
@@ -187,63 +187,67 @@ def run(
         class_pred_count = np.bincount(pred_max_ind_np)
         predicted_class = names_cls[pred_max_ind_np[0]]
 
-        # https://github.com/pytorch/captum/blob/master/tutorials/Resnet_TorchVision_Interpret.ipynb
-        import tkinter
-        import matplotlib
-        from matplotlib.colors import LinearSegmentedColormap
+        if heatmap:
+            # https://github.com/pytorch/captum/blob/master/tutorials/Resnet_TorchVision_Interpret.ipynb
+            import tkinter
+            import matplotlib
+            from matplotlib.colors import LinearSegmentedColormap
 
-        matplotlib.use('TkAgg')
-        prediction_score, pred_label_idx = torch.topk(pred_cls_logs, 1)
-        pred_label_idx.squeeze_()
+            matplotlib.use('TkAgg')
+            prediction_score, pred_label_idx = torch.topk(pred_cls_logs, 1)
+            pred_label_idx.squeeze_()
 
-        integrated_gradients = IntegratedGradients(model)
-        #
-        # attributions_ig = integrated_gradients.attribute(im, target=pred_label_idx, n_steps=40)
+            integrated_gradients = IntegratedGradients(model)
 
-        default_cmap = LinearSegmentedColormap.from_list('custom blue',
-                                                         [(0, '#ffffff'),
-                                                          (0.25, '#000000'),
-                                                          (1, '#000000')], N=256)
-        #
-        # _ = viz.visualize_image_attr(np.transpose(attributions_ig.squeeze().cpu().detach().numpy(), (1, 2, 0)),
-        #                              np.transpose(im.squeeze().cpu().detach().numpy(), (1, 2, 0)),
-        #                              method='heat_map',
-        #                              cmap=default_cmap,
-        #                              show_colorbar=True,
-        #                              sign='positive',
-        #                              outlier_perc=1)
+            default_cmap = LinearSegmentedColormap.from_list('custom blue',
+                                                             [(0, '#ffffff'),
+                                                              (0.25, '#000000'),
+                                                              (1, '#000000')], N=256)
 
-        # noise_tunnel = NoiseTunnel(integrated_gradients)
-        #
-        # attributions_ig_nt = noise_tunnel.attribute(im, nt_samples=10, nt_type='smoothgrad_sq',
-        #                                             target=pred_label_idx, internal_batch_size=1,)
-        #
-        # _ = viz.visualize_image_attr_multiple(
-        #     np.transpose(attributions_ig_nt.squeeze().cpu().detach().numpy(), (1, 2, 0)),
-        #     np.transpose(im.squeeze().cpu().detach().numpy(), (1, 2, 0)),
-        #     ["original_image", "heat_map"],
-        #     ["all", "positive"],
-        #     cmap=default_cmap,
-        #     show_colorbar=True,
-        #     titles=["Original Image", "Heat Map -- " + str(predicted_class)],
-        # )
+            # Get the gradients of the model with respect to the input image
+            # attributions_ig = integrated_gradients.attribute(im, target=pred_label_idx, n_steps=40)
 
-        occlusion = Occlusion(model)
+            # _ = viz.visualize_image_attr(np.transpose(attributions_ig.squeeze().cpu().detach().numpy(), (1, 2, 0)),
+            #                              np.transpose(im.squeeze().cpu().detach().numpy(), (1, 2, 0)),
+            #                              method='heat_map',
+            #                              cmap=default_cmap,
+            #                              show_colorbar=True,
+            #                              sign='positive',
+            #                              outlier_perc=1)
 
-        attributions_occ = occlusion.attribute(im,
-                                               strides=(3, 50, 50),
-                                               target=pred_label_idx,
-                                               sliding_window_shapes=(3, 60, 60),
-                                               baselines=0)
-        _ = viz.visualize_image_attr_multiple(
-            np.transpose(attributions_occ.squeeze().cpu().detach().numpy(), (1, 2, 0)),
-            np.transpose(im.squeeze().cpu().detach().numpy(), (1, 2, 0)),
-            ["original_image", "heat_map"],
-            ["all", "positive"],
-            show_colorbar=True,
-            outlier_perc=2,
-            titles=["Original Image", "Heat Map -- " + str(predicted_class) + " -- " + str(pred_max_log_np)],
-            )
+            ############### With Noise Tunnel ###############
+            # noise_tunnel = NoiseTunnel(integrated_gradients)
+            #
+            # attributions_ig_nt = noise_tunnel.attribute(im, nt_samples=10, nt_type='smoothgrad_sq',
+            #                                             target=pred_label_idx, internal_batch_size=1,)
+            #
+            # _ = viz.visualize_image_attr_multiple(
+            #     np.transpose(attributions_ig_nt.squeeze().cpu().detach().numpy(), (1, 2, 0)),
+            #     np.transpose(im.squeeze().cpu().detach().numpy(), (1, 2, 0)),
+            #     ["original_image", "heat_map"],
+            #     ["all", "positive"],
+            #     cmap=default_cmap,
+            #     show_colorbar=True,
+            #     titles=["Original Image", "Heat Map -- " + str(predicted_class)],
+            # )
+
+            ############### With Occlusion ###############
+            occlusion = Occlusion(model)
+
+            attributions_occ = occlusion.attribute(im,
+                                                   strides=(3, 50, 50),
+                                                   target=pred_label_idx,
+                                                   sliding_window_shapes=(3, 60, 60),
+                                                   baselines=0)
+            _ = viz.visualize_image_attr_multiple(
+                np.transpose(attributions_occ.squeeze().cpu().detach().numpy(), (1, 2, 0)),
+                np.transpose(im.squeeze().cpu().detach().numpy(), (1, 2, 0)),
+                ["original_image", "heat_map"],
+                ["all", "positive"],
+                show_colorbar=True,
+                outlier_perc=2,
+                titles=["Original Image", "Heat Map -- " + str(predicted_class) + " -- " + str(pred_max_log_np)],
+                )
 
         # NMS
         pred = non_max_suppression(
@@ -487,6 +491,9 @@ def parse_opt():
     )
     parser.add_argument(
         "--fiftyone", action="store_true", help="Is it for fiftyone inference"
+    )
+    parser.add_argument(
+        "--heatmap", action="store_true", help="If you want to generate heatmap"
     )
     opt = parser.parse_args()
     opt.imgsz *= 2 if len(opt.imgsz) == 1 else 1  # expand
