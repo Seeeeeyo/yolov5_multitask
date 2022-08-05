@@ -1,0 +1,20 @@
+# train and val data as 1) directory: path/images/, 2) file: path/images.txt, or 3) list: [path1/images/, path2/images/]
+train: data/multitasks/tiny/train_split.txt
+val: data/multitasks/tiny/val_split.txt
+test: data/multitasks/tiny/val_split.txt
+# train and val ground truth for the scene classification  -- Scene labels path for val set (csv)
+cls_train: data/multitasks/tiny/gt_class_train_tiny.csv
+cls_val: data/multitasks/tiny/gt_class_val_tiny.csv
+
+# number of classes
+# detection task
+nc: 10
+# classification task
+nc_cls: 3
+
+# class names
+# detection task
+names: [ 'speed_limit', "rw_tcd", "highway",  "interchange", "urban","rural-paved", "rural-dirt", "parking", "res1", "res2"]
+# classification task
+#names_cls: ['dry','unsafe']
+names_cls: ['dry','snowy','wet']

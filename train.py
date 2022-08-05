@@ -108,7 +108,9 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         workers,
         freeze,
         freeze_all_but,
-        datasplit
+        datasplit,
+        only_cls,
+        only_det
     ) = (
         Path(opt.save_dir),
         opt.epochs,
@@ -126,6 +128,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         opt.freeze,
         opt.freeze_all_but,
         opt.datasplit,
+        opt.only_cls,
+        opt.only_det
     )
     callbacks.run("on_pretrain_routine_start")
 
@@ -383,6 +387,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         quad=opt.quad,
         prefix=colorstr("train: "),
         shuffle=True,
+        only_cls=only_cls
     )
 
     mlc = int(np.concatenate(dataset.labels, 0)[:, 0].max())  # max label class
@@ -544,8 +549,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
             # print('shape', imgs.shape)
             assert imgs.shape[1] == 3  # RGB
-            assert imgs.shape[2] == imgs.shape[3] == imgsz
-
+            # assert imgs.shape[2] == imgs.shape[3] == imgsz
+            # print('imgs shape: ', imgs.shape)
             # Warmup
             if ni <= nw:
                 xi = [0, nw]  # x interp
@@ -594,18 +599,29 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 loss_det, loss_cls, loss_items_det, loss_items_cls = compute_loss(
                     pred, targets_det.to(device), targets_cls.to(device)
                 )  # loss scaled by batch_size
-                loss_total = loss_det + loss_cls
-                # loss_items = torch.cat(
-                #     (loss_items_det, loss_items_cls.reshape(1)), dim=0
-                # )
-                # print("loss_det", loss_det)
-                # print("loss_cls", loss_cls)
-                # print(loss_total)
-                loss_items = torch.cat(
-                    (loss_items_det, loss_items_cls), dim=0
-                )
-                assert loss_items.shape[0] == 4
 
+
+                if only_cls:
+                    loss_total = loss_cls
+                    loss_items = loss_items_cls
+                    assert loss_items.shape[0] == 1
+                elif only_det:
+                    loss_cls = 0
+                    loss_items_cls = torch.tensor([0]).to(device)
+                    loss_total = loss_det + loss_cls
+                    loss_items = torch.cat(
+                        (loss_items_det, loss_items_cls), dim=0
+                    )
+                    assert loss_items.shape[0] == 4
+                else:
+                    loss_total = loss_det + loss_cls
+                    loss_items = torch.cat(
+                        (loss_items_det, loss_items_cls), dim=0
+                    )
+                    assert loss_items.shape[0] == 4
+
+
+                # print("loss_total", loss_total)
                 # classification metrics
                 pred_cls_logs = torch.softmax(pred[1].detach(), dim=1)
                 ped_cls_maxs = torch.max(pred_cls_logs, dim=1)
@@ -977,6 +993,16 @@ def parse_opt(known=False):
         "--datasplit",
         type=str,
         help="Datasplit used",
+    )
+    parser.add_argument(
+        "--only_cls",
+        action="store_true",
+        help="If the model is only training for classification",
+    )
+    parser.add_argument(
+        "--only_det",
+        action="store_true",
+        help="If the model is only training for detectioh",
     )
 
     # Weights & Biases arguments
