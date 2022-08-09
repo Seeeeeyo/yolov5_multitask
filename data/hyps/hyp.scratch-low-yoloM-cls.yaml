@@ -3,13 +3,13 @@
 # python train.py --batch 64 --cfg yolov5n6.yaml --weights '' --data coco.yaml --img 640 --epochs 300 --linear
 # See tutorials for hyperparameter evolution https://github.com/ultralytics/yolov5#tutorials
 
-lr0: 0.001  # initial learning rate (SGD=1E-2, Adam=1E-3)
-lrf: 0.001  # final OneCycleLR learning rate (lr0 * lrf)
+lr0: 1  # initial learning rate (SGD=1E-2, Adam=1E-3)
+lrf: 0.01  # final OneCycleLR learning rate (lr0 * lrf)
 momentum: 0.937  # SGD momentum/Adam beta1
-weight_decay: 0.05  # optimizer weight decay 5e-4
+weight_decay: 0.00005  # optimizer weight decay 5e-4
 warmup_epochs: 3.0  # warmup epochs (fractions ok)
-warmup_momentum: 0.001  # warmup initial momentum
-warmup_bias_lr: 0.0001  # warmup initial bias lr
+warmup_momentum: 0.01  # warmup initial momentum
+warmup_bias_lr: 0.001  # warmup initial bias lr
 box: 0.05  # box loss gain
 cls: 0.5  # cls loss gain
 cls_pw: 1.0  # cls BCELoss positive_weight
@@ -32,5 +32,15 @@ fliplr: 0.0  # image flip left-right (probability)
 mosaic: 0.0  # image mosaic (probability) changed from 1.0 to 0.0
 mixup: 0.0  # image mixup (probability)
 copy_paste: 0.0  # segment copy-paste (probability)
-cut_top: True # cut top of image
-cut_sides: True # cut sides of image
+"cut_top": 0.0 # proba of cutting top of image
+"range_cut_top": [0.5, 0.65]
+"cut_bottom": 0.0 # proba of cutting bottom of image
+"range_cut_bottom": [0.01, 0.1]
+"cut_sides": 0.0 # proba of cutting sides of image
+"range_cut_sides": [0.1, 0.2]
+"mask_top": 0.6 # masks top of image
+"range_mask_top": [0.4, 0.6]
+"mask_bottom": 0.3
+"range_mask_bottom": [0.01, 0.1]
+"mask_sides": 0.5
+"range_mask_sides": [0.05, 0.15]

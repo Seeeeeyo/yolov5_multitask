@@ -890,11 +890,34 @@ class LoadImagesAndLabelsAndClasses(Dataset):
                 labels[:, 1:5], w=img.shape[1], h=img.shape[0], clip=True, eps=1e-3
             )
 
-        if hyp["cut_top"]:
-            img = img[int(img.shape[0] / 2):, :, :]
+        # crops
+        if random.random() < hyp["cut_top"]:
+            thre = random.uniform(hyp['range_cut_top'][0], hyp['range_cut_top'][1])
+            img = img[int(img.shape[0] * thre):, :, :]
 
-        if hyp["cut_sides"]:
-            img = img[:, int(img.shape[1]/10):int(9*img.shape[1]/10), :]
+        if random.random() < hyp["cut_sides"]:
+            thre = random.uniform(hyp['range_cut_sides'][0], hyp['range_cut_sides'][1])
+            img = img[:, int(img.shape[1] * thre):int(-img.shape[1] * thre), :]
+
+        if random.random() < hyp["cut_bottom"]:
+            thre = random.uniform(hyp['range_cut_bottom'][0], hyp['range_cut_bottom'][1])
+            img = img[:int(-img.shape[0] * thre), :, :]
+
+
+        # Masks
+        if random.random() < hyp["mask_top"]:
+            thre = random.uniform(hyp['range_mask_top'][0], hyp['range_mask_top'][1])
+            img[:int(img.shape[0] * thre), :, :] = 0
+
+        if random.random() < hyp["mask_bottom"]:
+            thre = random.uniform(hyp['range_mask_bottom'][0], hyp['range_mask_bottom'][1])
+            img[int(-img.shape[0] * thre):, :, :] = 0
+
+        if random.random() < hyp["mask_sides"]:
+            thre = random.uniform(hyp['range_mask_sides'][0], hyp['range_mask_sides'][1])
+            img[:, :int(img.shape[1] * thre), :] = 0
+            img[:, int(-img.shape[1] * thre):, :] = 0
+
 
         if self.augment:
             # Albuentations

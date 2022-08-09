@@ -857,6 +857,7 @@ def parse_opt(known=False):
     )
     parser.add_argument(
         "--batch-size",
+        "--batch",
         type=int,
         default=16,
         help="total batch size for all GPUs, -1 for autobatch",
@@ -1223,12 +1224,25 @@ def run(**kwargs):
 if __name__ == "__main__":
     opt = parse_opt()
     print(os.getcwd())
-    path_train = "data/multitasks/esmart_wip/train_time_split.cache"
-    path_val = "data/multitasks/esmart_wip/val_time_split.cache"
-    if os.path.exists(path_train):
-        os.remove(path_train)
-        print("train cache deleted")
-    if os.path.exists(path_val):
-        os.remove(path_val)
-        print("val cache deleted")
+    # path = "data/multitasks/esmart_wip/"
+    # # path_val = "data/multitasks/esmart_wip/val_time_split.cache"
+    # if os.path.exists(path_train):
+    #     os.remove(path_train)
+    #     print("train cache deleted")
+    # if os.path.exists(path_val):
+    #     os.remove(path_val)
+    #     print("val cache deleted")
+
+    import os
+    # delete caches
+    if opt.only_cls:
+        path = "data/multitasks/esmart_context/"
+    elif opt.only_det:
+        path = "data/multitasks/esmart_wip/"
+
+    for file in os.listdir(path):
+        if file.endswith(".cache"):
+            file_path = os.path.join(path, file)
+            os.remove(file_path)
+            print("cache deleted: ", file)
     main(opt)

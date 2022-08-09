@@ -56,6 +56,6 @@ class_head:
     [[24, 25, 26], 1, Concat, [1]],     # 27 -- cat resized feature maps. out=b x 512 x 1 x 1
     [27, 1, LinearSqueeze, [512, nc_cls]],    # 28 -- out= b x 3
     # det head
-    [[17, 20, 23], 1, Detect, [nc, anchors]]  # 24 --- Detect(P3, P4, P5)
+    [[17, 20, 23], 1, Detect, [nc, anchors]]  # 29 --- Detect(P3, P4, P5)
   ]
 
