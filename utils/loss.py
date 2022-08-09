@@ -161,7 +161,11 @@ class ComputeLoss:
 
         # Scene classification loss (for 1 classification now, will extend it later)
         # lcls_mtl = torch.zeros(1, device=self.device)  # class loss (scene classification)
-        assert cls_pred.shape[1] == self.nc_cls  # because x classes, 1 logit for each
+        # print(cls_pred.shape)
+        if cls_pred.dim() != 2:
+            cls_pred = torch.unsqueeze(cls_pred, dim=0)
+            # print('after cls_shape', cls_pred.shape)
+        assert cls_pred.shape[1] == self.nc_cls
         lcls_mtl += self.CEloss(cls_pred, targets_cls)
         # print(lcls_mtl)
         # pt = torch.exp(-lcls_mtl)
@@ -169,7 +173,7 @@ class ComputeLoss:
         # focal_loss_mtl += ((1 - pt) ** 3 * lcls_mtl).mean()  # mean over the batch
 
         # Object detection Losses
-        for i, pi in enumerate(det_pred):  # layer index, layer predictions
+        for i, pi in enumerate(det_pred):  # layer index, layfer predictions
             # print('pi.shape', pi.shape)
             b, a, gj, gi = indices[i]  # image, anchor, gridy, gridx
             tobj = torch.zeros(
