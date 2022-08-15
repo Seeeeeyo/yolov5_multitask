@@ -891,29 +891,29 @@ class LoadImagesAndLabelsAndClasses(Dataset):
             )
 
         # crops
-        if random.random() < hyp["cut_top"]:
+        if random.random() <= hyp["cut_top"]:
             thre = random.uniform(hyp['range_cut_top'][0], hyp['range_cut_top'][1])
             img = img[int(img.shape[0] * thre):, :, :]
 
-        if random.random() < hyp["cut_sides"]:
+        if random.random() <= hyp["cut_sides"]:
             thre = random.uniform(hyp['range_cut_sides'][0], hyp['range_cut_sides'][1])
             img = img[:, int(img.shape[1] * thre):int(-img.shape[1] * thre), :]
 
-        if random.random() < hyp["cut_bottom"]:
+        if random.random() <= hyp["cut_bottom"]:
             thre = random.uniform(hyp['range_cut_bottom'][0], hyp['range_cut_bottom'][1])
             img = img[:int(-img.shape[0] * thre), :, :]
 
 
         # Masks
-        if random.random() < hyp["mask_top"]:
+        if random.random() <= hyp["mask_top"]:
             thre = random.uniform(hyp['range_mask_top'][0], hyp['range_mask_top'][1])
             img[:int(img.shape[0] * thre), :, :] = 0
 
-        if random.random() < hyp["mask_bottom"]:
+        if random.random() <= hyp["mask_bottom"]:
             thre = random.uniform(hyp['range_mask_bottom'][0], hyp['range_mask_bottom'][1])
             img[int(-img.shape[0] * thre):, :, :] = 0
 
-        if random.random() < hyp["mask_sides"]:
+        if random.random() <= hyp["mask_sides"]:
             thre = random.uniform(hyp['range_mask_sides'][0], hyp['range_mask_sides'][1])
             img[:, :int(img.shape[1] * thre), :] = 0
             img[:, int(-img.shape[1] * thre):, :] = 0
