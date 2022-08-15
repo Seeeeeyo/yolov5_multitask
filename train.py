@@ -1239,6 +1239,8 @@ if __name__ == "__main__":
         path = "data/multitasks/esmart_context/"
     elif opt.only_det:
         path = "data/multitasks/esmart_wip/"
+    else:
+        path = "data/multitasks/esmart_wip/"
 
     for file in os.listdir(path):
         if file.endswith(".cache"):
