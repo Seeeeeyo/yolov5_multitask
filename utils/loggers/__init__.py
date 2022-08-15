@@ -117,7 +117,6 @@ class Loggers:
             "val/box_loss",
             "val/obj_loss",
             "val/cls_det_loss",
-            "val/cls_acc",  # val acc
             "val/cls_loss",  # val loss
             "x/lr0",
             "x/lr1",
