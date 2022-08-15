@@ -310,8 +310,8 @@ def run(
                             else (names[c] if hide_conf else f"{names[c]} {conf:.2f}")
                         )
                         annotator.box_label(xyxy, label, color=colors(c, True))
-                        text = str(predicted_class + " " + str(pred_max_log_np))
-                        annotator.text_cv2(text)
+                        # text = str(predicted_class + " " + str(pred_max_log_np))
+                        # annotator.text_cv2(text)
 
                     if save_crop:
                         save_one_box(
@@ -321,6 +321,9 @@ def run(
                             BGR=True,
                         )
 
+            if save_img or save_crop or view_img:  # Add cls text to image
+                text = str(predicted_class + " " + str(pred_max_log_np))
+                annotator.text_cv2(text)
 
             if save_txt:
                 with open(f"{txt_path_cls}.txt", "w") as f:
@@ -331,6 +334,7 @@ def run(
 
             # Stream results
             im0 = annotator.result()
+            view_img = True
             if view_img:
                 cv2.imshow(str(p), im0)
                 cv2.waitKey(1)  # 1 millisecond
