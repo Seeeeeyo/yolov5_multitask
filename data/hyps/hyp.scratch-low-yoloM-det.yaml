@@ -14,20 +14,21 @@ cls: 0.5  # cls loss gain
 cls_pw: 1.0  # cls BCELoss positive_weight
 obj: 1.0  # obj loss gain (scale with pixels)
 obj_pw: 1.0  # obj BCELoss positive_weight
+label_smoothing_cls: 0.0  # label smoothing for cls
 iou_t: 0.20  # IoU training threshold
 anchor_t: 4.0  # anchor-multiple threshold
 # anchors: 3  # anchors per output layer (0 to ignore)
 fl_gamma: 0.0  # focal loss gamma (efficientDet default gamma=1.5)
-hsv_h: 0.0  # image HSV-Hue augmentation (fraction)
-hsv_s: 0.0  # image HSV-Saturation augmentation (fraction)
-hsv_v: 0.0 # image HSV-Value augmentation (fraction)
+hsv_h: 0.015  # image HSV-Hue augmentation (fraction)
+hsv_s: 0.7  # image HSV-Saturation augmentation (fraction)
+hsv_v: 0.4  # image HSV-Value augmentation (fraction)
 degrees: 0.0  # image rotation (+/- deg)
-translate: 0.0  # image translation (+/- fraction)
-scale: 0.0  # image scale (+/- gain)
+translate: 0.1  # image translation (+/- fraction)
+scale: 0.5  # image scale (+/- gain)
 shear: 0.0  # image shear (+/- deg)
 perspective: 0.0  # image perspective (+/- fraction), range 0-0.001
 flipud: 0.0  # image flip up-down (probability)
-fliplr: 0.0  # image flip left-right (probability)
+fliplr: 0.5  # image flip left-right (probability)
 mosaic: 0.0  # image mosaic (probability) changed from 1.0 to 0.0
 mixup: 0.0  # image mixup (probability)
 copy_paste: 0.0  # segment copy-paste (probability)
@@ -37,9 +38,11 @@ copy_paste: 0.0  # segment copy-paste (probability)
 "range_cut_bottom": [0.0, 0.0]
 "cut_sides": 0.0 # proba of cutting sides of image
 "range_cut_sides": [0.0, 0.0]
-"mask_top": 0.0 # masks
-"range_mask_top": [0.0, 0.0]
+"mask_top": 0.7 # masks
+"range_mask_top": [0.3, 0.7]
 "mask_bottom": 0.0
 "range_mask_bottom": [0.0, 0.0]
 "mask_sides": 0.0
 "range_mask_sides": [0.0, 0.0]
+random_crop: 0.0 # proba of random cropping
+range_random_crop: [2, 3]
