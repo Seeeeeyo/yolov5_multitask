@@ -39,7 +39,7 @@ from captum.attr import GradientShap
 from captum.attr import Occlusion
 from captum.attr import NoiseTunnel
 from captum.attr import visualization as viz
-
+from matplotlib import pyplot as plt
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLOv5 root directory
@@ -125,6 +125,7 @@ def run(
     device = select_device(device)
     model = DetectMultiBackend(weights, device=device, dnn=dnn, data=data, fp16=half)
     names_cls = ['dry', 'snowy', 'wet']
+    # names_cls = ['safe','unsafe']
     model.names_cls = names_cls
     stride, names, names_cls, pt = model.stride, model.names, model.names_cls, model.pt
     imgsz = check_img_size(imgsz, s=stride)  # check image size
@@ -239,15 +240,20 @@ def run(
                                                    target=pred_label_idx,
                                                    sliding_window_shapes=(3, 60, 60),
                                                    baselines=0)
-            _ = viz.visualize_image_attr_multiple(
-                np.transpose(attributions_occ.squeeze().cpu().detach().numpy(), (1, 2, 0)),
-                np.transpose(im.squeeze().cpu().detach().numpy(), (1, 2, 0)),
-                ["original_image", "heat_map"],
-                ["all", "positive"],
+
+            # https://captum.ai/api/utilities.html
+            _ = viz.visualize_image_attr(
+                attr=np.transpose(attributions_occ.squeeze().cpu().detach().numpy(), (1, 2, 0)),
+                original_image=np.transpose(im.squeeze().cpu().detach().numpy(), (1, 2, 0)),
+                # ["all", "positive"],
+                method='blended_heat_map',
                 show_colorbar=True,
                 outlier_perc=2,
-                titles=["Original Image", "Heat Map -- " + str(predicted_class) + " -- " + str(pred_max_log_np)],
+                title="Image + Heat Map -- " + str(predicted_class) + " -- " + str(pred_max_log_np),
+                use_pyplot=True
                 )
+            # show_figure(fig)
+            # fig.show()
 
         # NMS
         pred = non_max_suppression(
@@ -334,7 +340,7 @@ def run(
 
             # Stream results
             im0 = annotator.result()
-            view_img = True
+
             if view_img:
                 cv2.imshow(str(p), im0)
                 cv2.waitKey(1)  # 1 millisecond
@@ -383,6 +389,14 @@ def run(
     if update:
         strip_optimizer(weights)  # update model (to fix SourceChangeWarning)
 
+def show_figure(fig):
+
+    # create a dummy figure and use its
+    # manager to display "fig"
+    dummy = plt.figure()
+    new_manager = dummy.canvas.manager
+    new_manager.canvas.figure = fig
+    fig.set_canvas(new_manager.canvas)
 
 def cam_show_img(img, feature_map, grads, out_name):
     H, W, _ = img.shape
@@ -499,6 +513,10 @@ def parse_opt():
     parser.add_argument(
         "--heatmap", action="store_true", help="If you want to generate heatmap"
     )
+    parser.add_argument(
+        "--view_img", action="store_true", help="If you want to visualize the live inference."
+    )
+
     opt = parser.parse_args()
     opt.imgsz *= 2 if len(opt.imgsz) == 1 else 1  # expand
     print_args(vars(opt))
