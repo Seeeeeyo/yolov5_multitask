@@ -29,6 +29,7 @@ import torch.nn as nn
 import yaml
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import SGD, Adam, AdamW, lr_scheduler
+from utils.torch_utils import smart_optimizer
 from tqdm import tqdm
 import sklearn.metrics as met
 
@@ -315,14 +316,14 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     )
     del g
 
+
+
     # Scheduler
     if opt.cos_lr:
         lf = one_cycle(1, hyp["lrf"], epochs)  # cosine 1->hyp['lrf']
     else:
         lf = lambda x: (1 - x / epochs) * (1.0 - hyp["lrf"]) + hyp["lrf"]  # linear
-    scheduler = lr_scheduler.LambdaLR(
-        optimizer, lr_lambda=lf
-    )  # plot_lr_scheduler(optimizer, scheduler, epochs)
+    scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)
 
     # EMA
     ema = ModelEMA(model) if RANK in {-1, 0} else None  # exponential moving average
@@ -458,13 +459,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     model.class_weights = (
         labels_to_class_weights(dataset.labels, nc).to(device) * nc
     )  # attach class weights
-    # TODO class weights for classification task
     model.names = names
     model.names_cls = names_cls
-
-    # torch.save(model, 'model.pt')
-    # x = torch.randn(6, 3, 224, 224, requires_grad=True)
-    # torch.onnx.export(model.cpu(), x, 'model.onnx',opset_version=11)
 
     # Start training
     t0 = time.time()
@@ -536,20 +532,22 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         acc_cls_ep = []
 
         for i, (imgs, targets_det, paths, shapes, targets_cls) in pbar:  # batch -------------------------------
-            # print('img shape: ', imgs.shape) # [batch_size, 3, height_img, width_img]
-            # print('\n')
-            # print('targets shape: ', targets_det.shape) # torch.Size([204, 6])
-            # print('gtclass shape', len(targets_cls))
             callbacks.run("on_train_batch_start")
             ni = i + nb * epoch  # number integrated batches (since train start)
             imgs = (
                 imgs.to(device, non_blocking=True).float() / 255
             )  # uint8 to float32, 0-255 to 0.0-1.0
-
-            # print('shape', imgs.shape)
             assert imgs.shape[1] == 3  # RGB
             # assert imgs.shape[2] == imgs.shape[3] == imgsz
-            # print('imgs shape: ', imgs.shape)
+            mean_dataset = []
+            std_dataset = []
+            if epoch == 0 and i == 0:
+                for q in range(imgs.shape[1]):
+                    mean_dataset.append(torch.mean(imgs[:,q,:,:]).item())
+                std_dataset.append(torch.std(imgs[:,q,:,:]).item())
+                print('mean: ', mean_dataset)
+                print('std: ', std_dataset)
+
             # Warmup
             if ni <= nw:
                 xi = [0, nw]  # x interp
@@ -581,7 +579,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                     imgs = nn.functional.interpolate(
                         imgs, size=ns, mode="bilinear", align_corners=False
                     )
-            # print("nb", nb)
+
             # Forward
             with torch.cuda.amp.autocast(amp):
                 pred = model(imgs)  # forward
@@ -705,6 +703,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         recall_cls = round(sum(recall_cls_ep) / len(recall_cls_ep), 4)
 
         # Scheduler
+
         lr = [x["lr"] for x in optimizer.param_groups]  # for loggers
         scheduler.step()
 
@@ -1244,6 +1243,12 @@ if __name__ == "__main__":
 
     for file in os.listdir(path):
         if file.endswith(".cache"):
+            file_path = os.path.join(path, file)
+            os.remove(file_path)
+            print("cache deleted: ", file)
+    path = "data/multitasks/"
+    for file in os.listdir(path):
+        if file.endswith(".cache") and not file.endswith("aug_seq.cache"):
             file_path = os.path.join(path, file)
             os.remove(file_path)
             print("cache deleted: ", file)
