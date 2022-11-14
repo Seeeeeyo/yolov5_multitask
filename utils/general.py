@@ -466,7 +466,7 @@ def check_font(font=FONT, progress=False):
         torch.hub.download_url_to_file(url, str(file), progress=progress)
 
 
-def check_dataset(data, autodownload=True):
+def check_dataset(data, autodownload=True, multitask=False):
     # Download, check and/or unzip dataset if not found locally
 
     # Download (optional)
@@ -480,19 +480,31 @@ def check_dataset(data, autodownload=True):
     if isinstance(data, (str, Path)):
         data = yaml_load(data)  # dictionary
 
-    # Checks
-    for k in 'train', 'val', 'names':
-        assert k in data, f"data.yaml '{k}:' field missing ❌"
-    if isinstance(data['names'], (list, tuple)):  # old array format
-        data['names'] = dict(enumerate(data['names']))  # convert to dict
-    data['nc'] = len(data['names'])
+    if not multitask:
+        # Checks
+        for k in 'train', 'val', 'names':
+            assert k in data, f"data.yaml '{k}:' field missing ❌"
+        if isinstance(data['names'], (list, tuple)):  # old array format
+            data['names'] = dict(enumerate(data['names']))  # convert to dict
+        data['nc'] = len(data['names'])
+    else:
+        # Checks
+        for k in 'train', 'val', 'names', 'train_cls', 'val_cls', 'names_cls_road_cond':
+            assert k in data, f"data.yaml '{k}:' field missing ❌"
+        if isinstance(data['names'], (list, tuple)):  # old array format
+            data['names'] = dict(enumerate(data['names']))  # convert to dict
+        if isinstance(data['names_cls_road_cond'], (list, tuple)):  # old array format
+            data['names_cls_road_cond'] = dict(enumerate(data['names_cls_road_cond']))  # convert to dict
+        data['nc'] = len(data['names'])
+        data['nc_cls_road_cond'] = len(data['names_cls_road_cond'])
+
 
     # Resolve paths
     path = Path(extract_dir or data.get('path') or '')  # optional 'path' default to '.'
     if not path.is_absolute():
         path = (ROOT / path).resolve()
         data['path'] = path  # download scripts
-    for k in 'train', 'val', 'test':
+    for k in 'train', 'val', 'test', 'train_cls', 'val_cls':
         if data.get(k):  # prepend path
             if isinstance(data[k], str):
                 x = (path / data[k]).resolve()
@@ -503,7 +515,7 @@ def check_dataset(data, autodownload=True):
                 data[k] = [str((path / x).resolve()) for x in data[k]]
 
     # Parse yaml
-    train, val, test, s = (data.get(x) for x in ('train', 'val', 'test', 'download'))
+    train, val, test, train_cls, val_cls, s = (data.get(x) for x in ('train', 'val', 'test', 'train_cls', 'val_cls', 'download'))
     if val:
         val = [Path(x).resolve() for x in (val if isinstance(val, list) else [val])]  # val path
         if not all(x.exists() for x in val):
