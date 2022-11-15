@@ -27,6 +27,23 @@ def smooth(y, f=0.05):
     yp = np.concatenate((p * y[0], y, p * y[-1]), 0)  # y padded
     return np.convolve(yp, np.ones(nf) / nf, mode='valid')  # y-smoothed
 
+def scores_cls(preds, targets):
+    from sklearn.metrics import precision_recall_fscore_support as score
+    targets = np.concatenate(targets, axis=0)
+    preds = np.concatenate(preds)
+    precision_per_class, recall_per_class, fscore_per_class, support_per_class = score(targets, preds, zero_division=1)
+    fpr_per_class = 1 - precision_per_class
+
+    precision_macro = precision_per_class.mean()
+    recall_macro = recall_per_class.mean()
+    fpr_macro = fpr_per_class.mean()
+    fscore_macro = fscore_per_class.mean()
+    support = support_per_class.mean()
+
+    score_per_class = [precision_per_class, recall_per_class, fpr_per_class, fscore_per_class, support_per_class]
+    score_macro = [precision_macro, recall_macro, fpr_macro, fscore_macro, support]
+
+    return score_per_class, score_macro
 
 def ap_per_class(tp, conf, pred_cls, target_cls, plot=False, save_dir='.', names=(), eps=1e-16, prefix=""):
     """ Compute the average precision, given the recall and precision curves.
