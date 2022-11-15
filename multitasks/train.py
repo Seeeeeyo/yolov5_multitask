@@ -41,7 +41,7 @@ ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
 import val as validate  # for end-of-epoch mAP
 from models.experimental import attempt_load
-from models.yolo import Model
+from models.yolo import Model, HybridModel
 from utils.autoanchor import check_anchors
 from utils.autobatch import check_train_batch_size
 from utils.callbacks import Callbacks
@@ -65,9 +65,10 @@ WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))
 
 
 def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictionary
-    save_dir, epochs, batch_size, weights, single_cls, evolve, data, cfg, resume, noval, nosave, workers, freeze = \
+    save_dir, epochs, batch_size, weights, single_cls, evolve, data, cfg, resume, noval, nosave, workers, freeze, \
+    freeze_all_but, only_cls, only_det = \
         Path(opt.save_dir), opt.epochs, opt.batch_size, opt.weights, opt.single_cls, opt.evolve, opt.data, opt.cfg, \
-        opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze,
+        opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze, opt.freeze_all_but, opt.only_cls, opt.only_det
     callbacks.run('on_pretrain_routine_start')
 
     # Directories
@@ -122,7 +123,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         with torch_distributed_zero_first(LOCAL_RANK):
             weights = attempt_download(weights)  # download if not found locally
         ckpt = torch.load(weights, map_location='cpu')  # load checkpoint to CPU to avoid CUDA memory leak
-        model = Model(cfg or ckpt['model'].yaml, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
+        model = HybridModel(cfg or ckpt['model'].yaml, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
         exclude = ['anchor'] if (cfg or hyp.get('anchors')) and not resume else []  # exclude keys
         csd = ckpt['model'].float().state_dict()  # checkpoint state_dict as FP32
         csd = intersect_dicts(csd, model.state_dict(), exclude=exclude)  # intersect
@@ -257,7 +258,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     scheduler.last_epoch = start_epoch - 1  # do not move
     scaler = torch.cuda.amp.GradScaler(enabled=amp)
     stopper, stop = EarlyStopping(patience=opt.patience), False
-    compute_loss = ComputeLoss(model)  # init loss class
+    compute_loss = ComputeLoss(model, multitasks=True)  # init loss class
     callbacks.run('on_train_start')
     LOGGER.info(f'Image sizes {imgsz} train, {imgsz} val\n'
                 f'Using {train_loader.num_workers * WORLD_SIZE} dataloader workers\n'
@@ -277,15 +278,25 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         # b = int(random.uniform(0.25 * imgsz, 0.75 * imgsz + gs) // gs * gs)
         # dataset.mosaic_border = [b - imgsz, -b]  # height, width borders
 
+        # change the 4 to 3+number of classification heads (so 4 right now)
         mloss = torch.zeros(3, device=device)  # mean losses
+        mloss_cls = torch.zeros(1, device=device)  # mean loss for classification
         if RANK != -1:
             train_loader.sampler.set_epoch(epoch)
         pbar = enumerate(train_loader)
-        LOGGER.info(('\n' + '%11s' * 7) % ('Epoch', 'GPU_mem', 'box_loss', 'obj_loss', 'cls_loss', 'Instances', 'Size'))
+        # TODO Add  'rc_loss',
+        LOGGER.info(('\n' + '%11s' * 8) % ('Epoch', 'GPU_mem', 'box_loss', 'obj_loss', 'cls_loss', 'rc_loss', 'Instances', 'Size'))
         if RANK in {-1, 0}:
             pbar = tqdm(pbar, total=nb, bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')  # progress bar
         optimizer.zero_grad()
-        for i, (imgs, targets, paths, _) in pbar:  # batch -------------------------------------------------------------
+
+        # cls metrics for road condition
+        recall_cls_ep = []
+        f1_cls_ep = []
+        precis_cls_ep = []
+        acc_cls_ep = []
+
+        for i, (imgs, targets, targets_cls, paths, shapes) in pbar:  # batch -------------------------------------------------------------
             callbacks.run('on_train_batch_start')
             ni = i + nb * epoch  # number integrated batches (since train start)
             imgs = imgs.to(device, non_blocking=True).float() / 255  # uint8 to float32, 0-255 to 0.0-1.0
@@ -311,15 +322,43 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
             # Forward
             with torch.cuda.amp.autocast(amp):
-                pred = model(imgs)  # forward
-                loss, loss_items = compute_loss(pred, targets.to(device))  # loss scaled by batch_size
+                preds = model(imgs)  # forward
+                det_pred, cls_pred = preds[0], preds[1]
+                if (i+1) != nb:  # if not the last batch
+                    # print(i)
+                    # print(pred[1].shape)
+                    assert cls_pred.shape == (batch_size, nc_cls_road_cond)
+                    assert targets_cls.shape == (batch_size,)
+                else:
+                    assert cls_pred.shape[1] == nc_cls_road_cond
+                assert targets.shape[1] == 6
+
+                # loss scaled by batch_size
+                loss, cls_loss, loss_items, cls_loss_item = compute_loss(preds,
+                                                                         targets.to(device), targets_cls.to(device))
+
+                cls_loss_item = cls_loss_item.new_tensor([cls_loss_item])
+                all_loss_items = torch.cat((loss_items, cls_loss_item), dim=0)
+                assert all_loss_items.shape[0] == 4
+
+                # Deal with the different losses for the different heads
+                # only classification learning
+                if only_cls:
+                    loss_total = cls_loss
+                # only detection learning
+                elif only_det:
+                    loss_total = loss
+                # multi-task learning
+                else:
+                    loss_total = loss + cls_loss
+
                 if RANK != -1:
                     loss *= WORLD_SIZE  # gradient averaged between devices in DDP mode
                 if opt.quad:
                     loss *= 4.
 
             # Backward
-            scaler.scale(loss).backward()
+            scaler.scale(loss_total).backward()
 
             # Optimize - https://pytorch.org/docs/master/notes/amp_examples.html
             if ni - last_opt_step >= accumulate:
@@ -335,9 +374,10 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             # Log
             if RANK in {-1, 0}:
                 mloss = (mloss * i + loss_items) / (i + 1)  # update mean losses
+                mloss_cls = (mloss_cls * i + cls_loss_item) / (i + 1)  # update mean losses
                 mem = f'{torch.cuda.memory_reserved() / 1E9 if torch.cuda.is_available() else 0:.3g}G'  # (GB)
-                pbar.set_description(('%11s' * 2 + '%11.4g' * 5) %
-                                     (f'{epoch}/{epochs - 1}', mem, *mloss, targets.shape[0], imgs.shape[-1]))
+                pbar.set_description(('%11s' * 2 + '%11.4g' * 6) %
+                                     (f'{epoch}/{epochs - 1}', mem, *mloss, mloss_cls,targets.shape[0], imgs.shape[-1]))
                 callbacks.run('on_train_batch_end', model, ni, imgs, targets, paths, list(mloss))
                 if callbacks.stop_training:
                     return
@@ -469,6 +509,9 @@ def parse_opt(known=False):
     parser.add_argument('--label-smoothing', type=float, default=0.0, help='Label smoothing epsilon')
     parser.add_argument('--patience', type=int, default=100, help='EarlyStopping patience (epochs without improvement)')
     parser.add_argument('--freeze', nargs='+', type=int, default=[0], help='Freeze layers: backbone=10, first3=0 1 2')
+    parser.add_argument("--freeze_all_but", nargs="+", type=int, default=[], help="Freeze all layers besides ...: backbone=10, first3=0 1 2",)
+    parser.add_argument("--only_cls", action="store_true", help="If the model is only training for classification")
+    parser.add_argument( "--only_det", action="store_true", help="If the model is only training for detection")
     parser.add_argument('--save-period', type=int, default=-1, help='Save checkpoint every x epochs (disabled if < 1)')
     parser.add_argument('--seed', type=int, default=0, help='Global training seed')
     parser.add_argument('--local_rank', type=int, default=-1, help='Automatic DDP Multi-GPU argument, do not modify')

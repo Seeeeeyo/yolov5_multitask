@@ -42,9 +42,10 @@ from utils.dataloaders import create_dataloader
 from utils.general import (LOGGER, Profile, check_dataset, check_img_size, check_requirements, check_yaml,
                            coco80_to_coco91_class, colorstr, increment_path, non_max_suppression, print_args,
                            scale_boxes, xywh2xyxy, xyxy2xywh)
-from utils.metrics import ConfusionMatrix, ap_per_class, box_iou
+from utils.metrics import ConfusionMatrix, ap_per_class, box_iou, scores_cls
 from utils.plots import output_to_target, plot_images, plot_val_study
 from utils.torch_utils import select_device, smart_inference_mode
+import sklearn.metrics as met
 
 
 def save_one_txt(predn, save_conf, shape, file):
@@ -132,6 +133,7 @@ def run(
         device, pt, jit, engine = next(model.parameters()).device, True, False, False  # get model device, PyTorch model
         half &= device.type != 'cpu'  # half precision only supported on CUDA
         model.half() if half else model.float()
+    # TODO handle this case (not from training)
     else:  # called directly
         device = select_device(device, batch_size=batch_size)
 
@@ -160,6 +162,7 @@ def run(
     cuda = device.type != 'cpu'
     is_coco = isinstance(data.get('val'), str) and data['val'].endswith(f'coco{os.sep}val2017.txt')  # COCO dataset
     nc = 1 if single_cls else int(data['nc'])  # number of classes
+    nc_cls = int(data["nc_cls_road_cond"])  # number of classes (classification)
     iouv = torch.linspace(0.5, 0.95, 10, device=device)  # iou vector for mAP@0.5:0.95
     niou = iouv.numel()
 
@@ -169,6 +172,12 @@ def run(
             ncm = model.model.nc
             assert ncm == nc, f'{weights} ({ncm} classes) trained on different --data than what you passed ({nc} ' \
                               f'classes). Pass correct combination of --weights and --data that are trained together.'
+            ncm_cls = model.model.nc_cls
+            assert ncm_cls == nc_cls, (
+                f"{weights[0]} ({ncm_cls} classes) trained on different --data than what you passed ({nc_cls} "
+                f"classes). Pass correct combination of --weights and --data that are trained together."
+            )
+
         model.warmup(imgsz=(1 if pt else batch_size, 3, imgsz, imgsz))  # warmup
         pad, rect = (0.0, False) if task == 'speed' else (0.5, pt)  # square inference for benchmarks
         task = task if task in ('train', 'val', 'test') else 'val'  # path to train/val/test images
@@ -180,38 +189,66 @@ def run(
                                        pad=pad,
                                        rect=rect,
                                        workers=workers,
-                                       prefix=colorstr(f'{task}: '))[0]
+                                       prefix=colorstr(f'{task}: '),
+                                       gt_cls_csv_path=data["val_cls"])[0]
 
     seen = 0
     confusion_matrix = ConfusionMatrix(nc=nc)
+    confusion_matrix_cls = ConfusionMatrix(nc=nc_cls)
     names = model.names if hasattr(model, 'names') else model.module.names  # get class names
+    names_cls = model.names_cls if hasattr(model, 'names_cls') else model.module.names_cls  # get class names
     if isinstance(names, (list, tuple)):  # old format
         names = dict(enumerate(names))
+    if isinstance(names_cls, (list, tuple)):  # old format
+        names_cls = dict(enumerate(names_cls))
     class_map = coco80_to_coco91_class() if is_coco else list(range(1000))
-    s = ('%22s' + '%11s' * 6) % ('Class', 'Images', 'Instances', 'P', 'R', 'mAP50', 'mAP50-95')
+    s = ('%22s' + '%11s' * 11) % ('Class', 'Images', 'Instances', 'P', 'R', 'mAP50', 'mAP50-95', "cls_P", "cls_R",
+                                  "cls_fpr", "cls_f1", "cls_acc")
+    # detection metrics
     tp, fp, p, r, f1, mp, mr, map50, ap50, map = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    # accuracy for classification
+    acc_cls_ep = []
     dt = Profile(), Profile(), Profile()  # profiling times
+    # detection loss
     loss = torch.zeros(3, device=device)
+    # classification loss
+    cls_loss = torch.zeros(1, device=device)
+    stats_cls = {'pred': [], 'label': [], 'prob': []}
     jdict, stats, ap, ap_class = [], [], [], []
     callbacks.run('on_val_start')
     pbar = tqdm(dataloader, desc=s, bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')  # progress bar
-    for batch_i, (im, targets, paths, shapes) in enumerate(pbar):
+    for batch_i, (im, targets, targets_cls, paths, shapes) in enumerate(pbar):
         callbacks.run('on_val_batch_start')
         with dt[0]:
             if cuda:
                 im = im.to(device, non_blocking=True)
                 targets = targets.to(device)
+                targets_cls = targets_cls.to(device)
             im = im.half() if half else im.float()  # uint8 to fp16/32
             im /= 255  # 0 - 255 to 0.0 - 1.0
             nb, _, height, width = im.shape  # batch size, channels, height, width
 
         # Inference
         with dt[1]:
-            preds, train_out = model(im) if compute_loss else (model(im, augment=augment), None)
-
+            output = model(im) if compute_loss else (model(im, augment=augment), None)
+            preds, det_train_out, pred_cls = output[0][0], output[0][1], output[1]
         # Loss
         if compute_loss:
-            loss += compute_loss(train_out, targets)[1]  # box, obj, cls
+            _, _, loss_, cls_loss_ = compute_loss(det_train_out, targets, targets_cls)
+            loss += loss_
+            cls_loss += cls_loss_
+
+        # get the predicted label (for classification task)
+        pred_cls_logs = torch.softmax(pred_cls.data.detach(), dim=1)
+        ped_cls_maxs = torch.max(pred_cls_logs, dim=1)
+        pred_max_ind_np = ped_cls_maxs.indices.cpu().numpy()
+        pred_max_log_np = ped_cls_maxs.values.cpu().numpy()
+        targets_cls_np = targets_cls.data.cpu().numpy()
+        # classification metrics
+        acc_cls_ep.append(met.accuracy_score(targets_cls_np, pred_max_ind_np))
+        stats_cls['pred'].append(pred_max_ind_np)
+        stats_cls['label'].append(targets_cls_np)
+        stats_cls['prob'].append(pred_max_log_np)
 
         # NMS
         targets[:, 2:] *= torch.tensor((width, height, width, height), device=device)  # to pixels
@@ -270,7 +307,11 @@ def run(
 
         callbacks.run('on_val_batch_end', batch_i, im, targets, paths, shapes, preds)
 
-    # Compute metrics
+    if compute_loss:
+        cls_loss = cls_loss.new_tensor([cls_loss])
+        val_loss_total = torch.cat((loss, cls_loss), dim=0)
+
+    # Compute detection metrics
     stats = [torch.cat(x, 0).cpu().numpy() for x in zip(*stats)]  # to numpy
     if len(stats) and stats[0].any():
         tp, fp, p, r, f1, ap, ap_class = ap_per_class(*stats, plot=plots, save_dir=save_dir, names=names)
@@ -278,16 +319,49 @@ def run(
         mp, mr, map50, map = p.mean(), r.mean(), ap50.mean(), ap.mean()
     nt = np.bincount(stats[3].astype(int), minlength=nc)  # number of targets per class
 
+    # Compute classification metrics
+    acc_cls = round(sum(acc_cls_ep) / len(acc_cls_ep), 3)
+    confusion_matrix_cls.compute(stats_cls['label'], stats_cls['pred'])
+    scores_per_class, scores_macro = scores_cls(stats_cls['pred'], stats_cls['label'])
+
+    pr_cls, recall_cls, fpr_cls, f1_cls, support = scores_macro
+    pr_per_class, recall_per_class, fpr_per_class, fscore_per_class, support_per_class = scores_per_class
+
+    if nc_cls == 3:
+        pr_dry = pr_per_class[0]
+        pr_snowy = pr_per_class[1]
+        pr_wet = pr_per_class[2]
+        fpr_dry = fpr_per_class[0]
+        fpr_snowy = fpr_per_class[1]
+        fpr_wet = fpr_per_class[2]
+        recall_dry = recall_per_class[0]
+        recall_snowy = recall_per_class[1]
+        recall_wet = recall_per_class[2]
+    else:
+        pr_dry = pr_per_class[0]
+        pr_unsafe = pr_per_class[1]
+        fpr_dry = fpr_per_class[0]
+        fpr_unsafe = fpr_per_class[1]
+        recall_dry = recall_per_class[0]
+        recall_unsafe = recall_per_class[1]
+
     # Print results
-    pf = '%22s' + '%11i' * 2 + '%11.3g' * 4  # print format
-    LOGGER.info(pf % ('all', seen, nt.sum(), mp, mr, map50, map))
+    pf = '%22s' + '%11i' * 2 + '%11.3g' * 4 + "%11.4g" * 5  # print format
+    LOGGER.info(pf % ('all', seen, nt.sum(), mp, mr, map50, map, pr_cls, recall_cls, fpr_cls, f1_cls, acc_cls))
     if nt.sum() == 0:
         LOGGER.warning(f'WARNING ⚠️ no labels found in {task} set, can not compute metrics without labels')
+
+    pf_ap_class = "%20s" + "%11i" * 2 + "%11.3g" * 4  # print format
+    pf_ap_class_cls = "%20s" + "%11i" * 2 + "%11s" * 4 + "%11.3g" * 4  # print format
 
     # Print results per class
     if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
         for i, c in enumerate(ap_class):
             LOGGER.info(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
+        for i in range(nc_cls):
+            LOGGER.info(pf_ap_class_cls % (names_cls[i], seen, support_per_class[i], "-", "-", "-", "-",
+                                           pr_per_class[i], recall_per_class[i], fpr_per_class[i],
+                                           fscore_per_class[i]))
 
     # Print speeds
     t = tuple(x.t / seen * 1E3 for x in dt)  # speeds per image
@@ -298,6 +372,7 @@ def run(
     # Plots
     if plots:
         confusion_matrix.plot(save_dir=save_dir, names=list(names.values()))
+        confusion_matrix_cls.plot(save_dir=save_dir, names=list(names_cls.values()))
         callbacks.run('on_val_end', nt, tp, fp, p, r, f1, ap, ap50, ap_class, confusion_matrix)
 
     # Save JSON
@@ -334,7 +409,25 @@ def run(
     maps = np.zeros(nc) + map
     for i, c in enumerate(ap_class):
         maps[c] = ap[i]
-    return (mp, mr, map50, map, *(loss.cpu() / len(dataloader)).tolist()), maps, t
+
+    if nc_cls == 3:
+        return (
+            (mp, mr, map50, map, pr_cls, recall_cls, pr_snowy, pr_wet, recall_snowy, recall_wet, acc_cls,
+             *(val_loss_total.cpu() / len(dataloader)).tolist()),
+            maps,
+            stats_cls,
+            t,
+        )
+    else:
+        return (
+            (mp, mr, map50, map, pr_cls, recall_cls, pr_dry, pr_unsafe, recall_dry, recall_unsafe, acc_cls,
+             *(val_loss_total.cpu() / len(dataloader)).tolist()),
+            maps,
+            stats_cls,
+            t,
+        )
+    # return (mp, mr, map50, map, *(loss.cpu() / len(dataloader)).tolist()), maps, t
+
 
 
 def parse_opt():
