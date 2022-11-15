@@ -92,13 +92,17 @@ class ComputeLoss:
     sort_obj_iou = False
 
     # Compute losses
-    def __init__(self, model, autobalance=False):
+    def __init__(self, model, autobalance=False, multitasks=True):
         device = next(model.parameters()).device  # get model device
         h = model.hyp  # hyperparameters
 
         # Define criteria
         BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['cls_pw']], device=device))
         BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['obj_pw']], device=device))
+        if multitasks:
+            # TODO add many cls losses as there are cls heads
+            # classification loss
+            CEloss = nn.CrossEntropyLoss().to(device)
 
         # Class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
         self.cp, self.cn = smooth_BCE(eps=h.get('label_smoothing', 0.0))  # positive, negative BCE targets
@@ -112,19 +116,27 @@ class ComputeLoss:
         self.balance = {3: [4.0, 1.0, 0.4]}.get(m.nl, [4.0, 1.0, 0.25, 0.06, 0.02])  # P3-P7
         self.ssi = list(m.stride).index(16) if autobalance else 0  # stride 16 index
         self.BCEcls, self.BCEobj, self.gr, self.hyp, self.autobalance = BCEcls, BCEobj, 1.0, h, autobalance
+        self.CEloss = CEloss # classification loss
         self.na = m.na  # number of anchors
         self.nc = m.nc  # number of classes
         self.nl = m.nl  # number of layers
         self.anchors = m.anchors
         self.device = device
+        self.multitasks = multitasks
 
-    def __call__(self, p, targets):  # predictions, targets
+    def __call__(self, preds, targets, targets_cls):  # predictions, targets
+        (p, cls_pred) = preds
         lcls = torch.zeros(1, device=self.device)  # class loss
         lbox = torch.zeros(1, device=self.device)  # box loss
         lobj = torch.zeros(1, device=self.device)  # object loss
         tcls, tbox, indices, anchors = self.build_targets(p, targets)  # targets
 
-        # Losses
+        # Classification loss
+        if self.multitasks:
+            assert cls_pred is not None
+            lcls_cls = self.CEloss(cls_pred, targets_cls)
+
+        # Detection Losses
         for i, pi in enumerate(p):  # layer index, layer predictions
             b, a, gj, gi = indices[i]  # image, anchor, gridy, gridx
             tobj = torch.zeros(pi.shape[:4], dtype=pi.dtype, device=self.device)  # target obj
@@ -167,12 +179,15 @@ class ComputeLoss:
 
         if self.autobalance:
             self.balance = [x / self.balance[self.ssi] for x in self.balance]
+
+        # TODO later, add classification loss weight in hyp
         lbox *= self.hyp['box']
         lobj *= self.hyp['obj']
         lcls *= self.hyp['cls']
         bs = tobj.shape[0]  # batch size
 
-        return (lbox + lobj + lcls) * bs, torch.cat((lbox, lobj, lcls)).detach()
+        # TODO mulitply by bs or not?
+        return (lbox + lobj + lcls) * bs, lcls_cls * bs, torch.cat((lbox, lobj, lcls)).detach(), lcls_cls.detach()
 
     def build_targets(self, p, targets):
         # Build targets for compute_loss(), input targets(image,class,x,y,w,h)
