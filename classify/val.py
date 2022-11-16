@@ -24,6 +24,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
+import pandas as pd
 
 import torch
 from tqdm import tqdm
@@ -38,6 +39,7 @@ from models.common import DetectMultiBackend
 from utils.dataloaders import create_classification_dataloader
 from utils.general import LOGGER, Profile, check_img_size, check_requirements, colorstr, increment_path, print_args
 from utils.torch_utils import select_device, smart_inference_mode
+import pandas
 
 
 @smart_inference_mode()
@@ -97,6 +99,8 @@ def run(
 
     model.eval()
     pred, targets, loss, dt = [], [], 0, (Profile(), Profile(), Profile())
+    softmaxes = []
+    cls_results = {'test_pred': [], 'test_gt': [], 'test_prob': []}
     n = len(dataloader)  # number of batches
     action = 'validating' if dataloader.dataset.root.stem == 'val' else 'testing'
     desc = f"{pbar.desc[:-36]}{action:>36}" if pbar else f"{action}"
@@ -111,6 +115,7 @@ def run(
 
             with dt[2]:
                 pred.append(y.argsort(1, descending=True)[:, :5])
+                softmaxes.append(torch.max(torch.nn.functional.softmax(y, dim=1), dim=1).values.cpu().numpy().tolist())
                 targets.append(labels)
                 if criterion:
                     loss += criterion(y, labels)
@@ -120,6 +125,12 @@ def run(
     correct = (targets[:, None] == pred).float()
     acc = torch.stack((correct[:, 0], correct.max(1).values), dim=1)  # (top1, top5) accuracy
     top1, top5 = acc.mean(0).tolist()
+
+
+    cls_results['test_pred'] = pred[:, 0].cpu().numpy().tolist()
+    cls_results['test_gt'] = targets.cpu().numpy().tolist()
+    softmaxes = [item for sublist in softmaxes for item in sublist]
+    cls_results['test_prob'] = softmaxes
 
     if pbar:
         pbar.desc = f"{pbar.desc[:-36]}{loss:>12.3g}{top1:>12.3g}{top5:>12.3g}"
@@ -137,6 +148,10 @@ def run(
         LOGGER.info(f'Speed: %.1fms pre-process, %.1fms inference, %.1fms post-process per image at shape {shape}' % t)
         LOGGER.info(f"Results saved to {colorstr('bold', save_dir)}")
 
+    # save cls_results to csv file
+    df = pd.DataFrame(cls_results)
+    df.to_csv(save_dir / 'cls_results.csv', index=False)
+    LOGGER.info(f"Classification results saved to {colorstr('bold', save_dir / 'cls_results.csv')}")
     return top1, top5, loss
 
 
