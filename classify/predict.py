@@ -204,7 +204,7 @@ def run(
                 if len(all_preds['dangerous_wdw']) > wdw:
                     annotator.text((32, 150), avg_text, txt_color=(255, 255, 255))
                     if all_preds['dangerous_wdw'][-1] > dangerous_tsh:
-                        annotator.text((32, 200), f"Dangerous:{np.round(all_preds['dangerous_wdw'][-1], 3)}", txt_color=(0, 0, 255))
+                        annotator.text((32, 200), f"Dangerous:{np.round(all_preds['dangerous_wdw'][-1], 2)}", txt_color=(0, 0, 255))
                     else:
                         annotator.text((32, 200), f"Safe", txt_color=(0, 255, 0))
             if save_txt:  # Write to file
@@ -230,6 +230,7 @@ def run(
                         vid_path[i] = save_path
                         if isinstance(vid_writer[i], cv2.VideoWriter):
                             vid_writer[i].release()  # release previous video writer
+
                         if vid_cap:  # video
                             fps = vid_cap.get(cv2.CAP_PROP_FPS)
                             w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
