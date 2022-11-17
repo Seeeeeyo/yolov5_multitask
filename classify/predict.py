@@ -73,6 +73,7 @@ def run(
         wdw=400,  # window size for moving average
         confidence=0.5,  # confidence threshold
         dangerous_tsh=0.8,  # dangerous threshold
+        temperature=0.648,  # temperature scaling
 ):
     source = str(source)
     save_img = not nosave and not source.endswith('.txt')  # save inference images
@@ -125,6 +126,8 @@ def run(
 
         # Post-process
         with dt[2]:
+            # divide the results by the temperature parameter
+            results = results / temperature
             pred = F.softmax(results, dim=1)  # probabilities
 
         # Process predictions
@@ -277,6 +280,7 @@ def parse_opt():
     parser.add_argument('--wdw', type=int, default=500, help='window size for moving average (video only)')
     parser.add_argument('--confidence', type=float, default=0.5, help='confidence threshold')
     parser.add_argument('--dangerous_tsh', type=float, default=0.8, help='dangerous confidence threshold')
+    parser.add_argument('--temperature', type=float, default=0.648, help='temperature to apply to logits')
     opt = parser.parse_args()
     opt.imgsz *= 2 if len(opt.imgsz) == 1 else 1  # expand
     print_args(vars(opt))
