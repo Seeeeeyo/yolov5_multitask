@@ -1200,7 +1200,7 @@ def create_classification_dataloader(path,
                                      cache=False,
                                      rank=-1,
                                      workers=8,
-                                     shuffle=True):
+                                     shuffle=False):
     # Returns Dataloader object to be used with YOLOv5 Classifier
     with torch_distributed_zero_first(rank):  # init dataset *.cache only once if DDP
         dataset = ClassificationDataset(root=path, imgsz=imgsz, augment=augment, cache=cache)
