@@ -151,6 +151,7 @@ def run(
     # save cls_results to csv file
     df = pd.DataFrame(cls_results)
     df.to_csv(save_dir / 'cls_results.csv', index=False)
+    torch.save(dataloader.dataset, save_dir / 'val_dataset.pth')
     LOGGER.info(f"Classification results saved to {colorstr('bold', save_dir / 'cls_results.csv')}")
     return top1, top5, loss
 
