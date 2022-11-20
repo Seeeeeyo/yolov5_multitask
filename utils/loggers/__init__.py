@@ -64,21 +64,61 @@ class Loggers():
         self.plots = not opt.noplots  # plot results
         self.logger = logger  # for printing results to console
         self.include = include
+        # self.keys = [
+        #     'train/box_loss',
+        #     'train/obj_loss',
+        #     'train/cls_loss',  # train loss
+        #     'metrics/precision',
+        #     'metrics/recall',
+        #     'metrics/mAP_0.5',
+        #     'metrics/mAP_0.5:0.95',  # metrics
+        #     'val/box_loss',
+        #     'val/obj_loss',
+        #     'val/cls_loss',  # val loss
+        #     'x/lr0',
+        #     'x/lr1',
+        #     'x/lr2']  # params
+        # self.best_keys = ['best/epoch', 'best/precision', 'best/recall', 'best/mAP_0.5', 'best/mAP_0.5:0.95']
         self.keys = [
-            'train/box_loss',
-            'train/obj_loss',
-            'train/cls_loss',  # train loss
-            'metrics/precision',
-            'metrics/recall',
-            'metrics/mAP_0.5',
-            'metrics/mAP_0.5:0.95',  # metrics
-            'val/box_loss',
-            'val/obj_loss',
-            'val/cls_loss',  # val loss
-            'x/lr0',
-            'x/lr1',
-            'x/lr2']  # params
-        self.best_keys = ['best/epoch', 'best/precision', 'best/recall', 'best/mAP_0.5', 'best/mAP_0.5:0.95']
+            "train/box_loss",  # 0
+            "train/obj_loss",
+            "train/cls_det_loss",
+            "train/cls_loss",  # train loss
+            # "train/cls_acc",  # train accuracy to make sure we can overfit
+            # [P, R, mAP @ .5, mAP @ .5 - .95, P_cls, R_cls, P_snowy, P_wet, R_snowy, R_wet]
+            "metrics/precision",  # 5
+            "metrics/recall",
+            "metrics/mAP_0.5",
+            "metrics/mAP_0.5:0.95",
+            "metrics/prec_cls",
+            "metrics/recall_cls",
+            "metrics/P_snowy",
+            "metrics/P_wet",
+            "metrics/R_snowy",
+            "metrics/R_wet",  # metrics
+            "metrics/cls_acc_val",  # val acc
+            "val/box_loss",  # 15
+            "val/obj_loss",
+            "val/cls_det_loss",
+            "val/cls_loss",  # val loss
+            "x/lr0",  # 20
+            "x/lr1",
+            "x/lr2",
+        ]  # params
+        self.best_keys = [
+            "best/epoch",
+            "best/precision",
+            "best/recall",
+            "best/mAP_0.5",
+            "best/mAP_0.5:0.95",
+            "best/P_cls",
+            "best/R_cls",
+            "best/P_snowy",
+            "best/P_wet",
+            "best/R_snowy",
+            "best/R_wet",
+            "best/cls_acc_val",  # metrics
+        ]
         for k in LOGGERS:
             setattr(self, k, None)  # init empty logger dictionary
         self.csv = True  # always log to csv

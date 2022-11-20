@@ -196,7 +196,8 @@ def run(
     confusion_matrix = ConfusionMatrix(nc=nc)
     confusion_matrix_cls = ConfusionMatrix(nc=nc_cls)
     names = model.names if hasattr(model, 'names') else model.module.names  # get class names
-    names_cls = model.names_cls if hasattr(model, 'names_cls') else model.module.names_cls  # get class names
+    # names_cls = model.names_cls if hasattr(model, 'names_cls') else model.module.names_cls  # get class names
+    names_cls = data["names_cls_road_cond"]
     if isinstance(names, (list, tuple)):  # old format
         names = dict(enumerate(names))
     if isinstance(names_cls, (list, tuple)):  # old format
@@ -234,7 +235,8 @@ def run(
             preds, det_train_out, pred_cls = output[0][0], output[0][1], output[1]
         # Loss
         if compute_loss:
-            _, _, loss_, cls_loss_ = compute_loss(det_train_out, targets, targets_cls)
+            output_for_loss = (det_train_out, pred_cls)
+            _, _, loss_, cls_loss_ = compute_loss(output_for_loss, targets, targets_cls)
             loss += loss_
             cls_loss += cls_loss_
 
@@ -321,7 +323,7 @@ def run(
 
     # Compute classification metrics
     acc_cls = round(sum(acc_cls_ep) / len(acc_cls_ep), 3)
-    confusion_matrix_cls.compute(stats_cls['label'], stats_cls['pred'])
+    #confusion_matrix_cls.compute(stats_cls['label'], stats_cls['pred'])
     scores_per_class, scores_macro = scores_cls(stats_cls['pred'], stats_cls['label'])
 
     pr_cls, recall_cls, fpr_cls, f1_cls, support = scores_macro
@@ -337,13 +339,13 @@ def run(
         recall_dry = recall_per_class[0]
         recall_snowy = recall_per_class[1]
         recall_wet = recall_per_class[2]
-    else:
-        pr_dry = pr_per_class[0]
-        pr_unsafe = pr_per_class[1]
-        fpr_dry = fpr_per_class[0]
-        fpr_unsafe = fpr_per_class[1]
-        recall_dry = recall_per_class[0]
-        recall_unsafe = recall_per_class[1]
+    # else:
+    #     pr_dry = pr_per_class[0]
+    #     pr_unsafe = pr_per_class[1]
+    #     fpr_dry = fpr_per_class[0]
+    #     fpr_unsafe = fpr_per_class[1]
+    #     recall_dry = recall_per_class[0]
+    #     recall_unsafe = recall_per_class[1]
 
     # Print results
     pf = '%22s' + '%11i' * 2 + '%11.3g' * 4 + "%11.4g" * 5  # print format
@@ -357,7 +359,7 @@ def run(
     # Print results per class
     if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
         for i, c in enumerate(ap_class):
-            LOGGER.info(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
+            LOGGER.info(pf_ap_class % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
         for i in range(nc_cls):
             LOGGER.info(pf_ap_class_cls % (names_cls[i], seen, support_per_class[i], "-", "-", "-", "-",
                                            pr_per_class[i], recall_per_class[i], fpr_per_class[i],
@@ -418,14 +420,14 @@ def run(
             stats_cls,
             t,
         )
-    else:
-        return (
-            (mp, mr, map50, map, pr_cls, recall_cls, pr_dry, pr_unsafe, recall_dry, recall_unsafe, acc_cls,
-             *(val_loss_total.cpu() / len(dataloader)).tolist()),
-            maps,
-            stats_cls,
-            t,
-        )
+    # else:
+    #     return (
+    #         (mp, mr, map50, map, pr_cls, recall_cls, pr_dry, pr_unsafe, recall_dry, recall_unsafe, acc_cls,
+    #          *(val_loss_total.cpu() / len(dataloader)).tolist()),
+    #         maps,
+    #         stats_cls,
+    #         t,
+    #     )
     # return (mp, mr, map50, map, *(loss.cpu() / len(dataloader)).tolist()), maps, t
 
 

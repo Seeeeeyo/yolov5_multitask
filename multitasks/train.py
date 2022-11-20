@@ -66,9 +66,9 @@ WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))
 
 def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictionary
     save_dir, epochs, batch_size, weights, single_cls, evolve, data, cfg, resume, noval, nosave, workers, freeze, \
-    freeze_all_but, only_cls, only_det = \
+    freeze_till, freeze_all_but, only_cls, only_det = \
         Path(opt.save_dir), opt.epochs, opt.batch_size, opt.weights, opt.single_cls, opt.evolve, opt.data, opt.cfg, \
-        opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze, opt.freeze_all_but, opt.only_cls, opt.only_det
+        opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze, opt.freeze_till, opt.freeze_all_but, opt.only_cls, opt.only_det
     callbacks.run('on_pretrain_routine_start')
 
     # Directories
@@ -111,6 +111,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     train_path, val_path = data_dict['train'], data_dict['val']
     nc = 1 if single_cls else int(data_dict['nc'])  # number of classes
     names = {0: 'item'} if single_cls and len(data_dict['names']) != 1 else data_dict['names']  # class names
+    names_cls = {0: 'item'} if single_cls and len(data_dict['names_cls_road_cond']) != 1 else data_dict['names_cls_road_cond']  # class names
     is_coco = isinstance(val_path, str) and val_path.endswith('coco/val2017.txt')  # COCO dataset
     # same, for classification
     train_cls_path, val_cls_path = data_dict['train_cls'], data_dict['val_cls']
@@ -134,13 +135,37 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     amp = check_amp(model)  # check AMP
 
     # Freeze
-    freeze = [f'model.{x}.' for x in (freeze if len(freeze) > 1 else range(freeze[0]))]  # layers to freeze
+    freeze_till = [f'model.{x}.' for x in (freeze_till if len(freeze_till) > 1 else range(freeze_till[0]))]  # layers to freeze
     for k, v in model.named_parameters():
         v.requires_grad = True  # train all layers
         # v.register_hook(lambda x: torch.nan_to_num(x))  # NaN to 0 (commented for erratic training results)
-        if any(x in k for x in freeze):
+        if any(x in k for x in freeze_till):
             LOGGER.info(f'freezing {k}')
             v.requires_grad = False
+
+    if len(freeze) > 0:
+        freeze = [
+            f"model.{x}." for x in (freeze)
+        ]  # layers to freeze
+    freeze_manual = ['28']
+    for k, v in model.named_parameters():
+        v.requires_grad = True  # train all layers
+        if any(x in k for x in freeze):
+            LOGGER.info(f"freezing {k}")
+            v.requires_grad = False
+            # torch.save(v.data, save_dir / f"frozen_{k}.pt")
+
+    if len(freeze_all_but) > 0:
+        freeze_all_but = [
+            f"model.{x}." for x in (freeze_all_but)
+        ]  # layers to freeze
+        for k, v in model.named_parameters():
+            v.requires_grad = False  # freeze all layers
+            LOGGER.info(f"freezing {k}")
+            if any(x in k for x in freeze_all_but):
+                LOGGER.info(f"UNFREEZING {k}")
+                v.requires_grad = True
+                # torch.save(v.data, save_dir / f"frozen_{k}.pt")
 
     # Image size
     gs = max(int(model.stride.max()), 32)  # grid size (max stride)
@@ -246,6 +271,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     model.hyp = hyp  # attach hyperparameters to model
     model.class_weights = labels_to_class_weights(dataset.labels, nc).to(device) * nc  # attach class weights
     model.names = names
+    model.names_cls = names_cls
 
     # Start training
     t0 = time.time()
@@ -393,7 +419,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             ema.update_attr(model, include=['yaml', 'nc', 'hyp', 'names', 'stride', 'class_weights'])
             final_epoch = (epoch + 1 == epochs) or stopper.possible_stop
             if not noval or final_epoch:  # Calculate mAP
-                results, maps, _ = validate.run(data_dict,
+                results, maps, stats, t = validate.run(data_dict,
                                                 batch_size=batch_size // WORLD_SIZE * 2,
                                                 imgsz=imgsz,
                                                 half=amp,
@@ -406,11 +432,12 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                                 compute_loss=compute_loss)
 
             # Update best mAP
-            fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
+            fi = fitness(np.array(results).reshape(1, -1), 3)  # weighted combination of [P, R, mAP@.5, mAP@.5-.95, P_cls, R_cls]
             stop = stopper(epoch=epoch, fitness=fi)  # early stop check
             if fi > best_fitness:
                 best_fitness = fi
-            log_vals = list(mloss) + list(results) + lr
+            mloss_det_and_cls = torch.cat((mloss, mloss_cls), dim=0)
+            log_vals = list(mloss_det_and_cls) + list(results) + lr
             callbacks.run('on_fit_epoch_end', log_vals, epoch, best_fitness, fi)
 
             # Save model
@@ -452,7 +479,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 strip_optimizer(f)  # strip optimizers
                 if f is best:
                     LOGGER.info(f'\nValidating {f}...')
-                    results, _, _ = validate.run(
+                    results, maps, stats, t = validate.run(
                         data_dict,
                         batch_size=batch_size // WORLD_SIZE * 2,
                         imgsz=imgsz,
@@ -508,7 +535,8 @@ def parse_opt(known=False):
     parser.add_argument('--cos-lr', action='store_true', help='cosine LR scheduler')
     parser.add_argument('--label-smoothing', type=float, default=0.0, help='Label smoothing epsilon')
     parser.add_argument('--patience', type=int, default=100, help='EarlyStopping patience (epochs without improvement)')
-    parser.add_argument('--freeze', nargs='+', type=int, default=[0], help='Freeze layers: backbone=10, first3=0 1 2')
+    parser.add_argument('--freeze', nargs='+', type=int, default=[], help='Freeze layers: backbone=10, first3=0 1 2')
+    parser.add_argument('--freeze_till', nargs='+', type=int, default=[0], help='Freeze layers till: backbone=10, first3=0 1 2')
     parser.add_argument("--freeze_all_but", nargs="+", type=int, default=[], help="Freeze all layers besides ...: backbone=10, first3=0 1 2",)
     parser.add_argument("--only_cls", action="store_true", help="If the model is only training for classification")
     parser.add_argument( "--only_det", action="store_true", help="If the model is only training for detection")
