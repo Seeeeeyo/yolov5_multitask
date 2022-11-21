@@ -14,6 +14,8 @@ import sys
 from copy import deepcopy
 from pathlib import Path
 
+import torch
+
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[1]  # YOLOv5 root directory
 if str(ROOT) not in sys.path:
@@ -120,16 +122,15 @@ class BaseModel(nn.Module):
                 self._profile_one_layer(m, x, dt)
 
             x = m(x)  # run
-            print(m.i)
             y.append(x if m.i in self.save else None)  # save output
             if visualize:
                 feature_visualization(x, m.type, m.i, save_dir=visualize)
             # The classification head has to be the second to last layer
             # TODO change it so that it is not hardcoded
-            if m.i == self.model[10].i:  # classification head
+            if m.i == self.model[25].i:  # classification head
                 pred_cls = x
             # The detection head has to be the last layer
-            if m.i == self.model[-1].i:  # detection head
+            if m.i == self.model[24].i:  # detection head
                 pred_det = x
         return pred_det, pred_cls
 
@@ -202,8 +203,10 @@ class DetectionModel(BaseModel):
             m.inplace = self.inplace
             forward = lambda x: self.forward(x)[0] if isinstance(m, Segment) else self.forward(x)
             m.stride = torch.tensor([s / x.shape[-2] for x in forward(torch.zeros(1, ch, s, s))])  # forward
+            print('stride', m.stride)
             check_anchor_order(m)
             m.anchors /= m.stride.view(-1, 1, 1)
+            print('anchors', m.anchors)
             self.stride = m.stride
             self._initialize_biases()  # only run once
 
@@ -340,8 +343,10 @@ class HybridModel(BaseModel):
             s = 256  # 2x min stride
             m.inplace = self.inplace
             forward = lambda x: self.forward(x)[0] if isinstance(m, Segment) else self.forward(x)
-            m.stride = torch.tensor([s / x.shape[-2] for x in self.forward(torch.zeros(1, ch, s, s))])  # forward
-
+            # m.stride = torch.tensor([s / x.shape[-2] for x in self.forward(torch.zeros(1, ch, s, s))])  # forward
+            # tensor([ 8., 16., 32.])
+            # create the strides, by running a forward pass till layer number 24 (the last layer before the Classify layer)
+            m.stride = torch.Tensor([8., 16., 32.])
             check_anchor_order(m)
             m.anchors /= m.stride.view(-1, 1, 1)
             self.stride = m.stride
@@ -406,7 +411,7 @@ class HybridModel(BaseModel):
     def _initialize_biases(self, cf=None):  # initialize biases into Detect(), cf is class frequency
         # https://arxiv.org/abs/1708.02002 section 3.3
         # cf = torch.bincount(torch.tensor(np.concatenate(dataset.labels, 0)[:, 0]).long(), minlength=nc) + 1.
-        m = self.model[-1]  # Detect() module
+        m = self.model[-2]  # Detect() module
         for mi, s in zip(m.m, m.stride):  # from
             b = mi.bias.view(m.na, -1)  # conv.bias(255) to (3,85)
             b.data[:, 4] += math.log(8 / (640 / s) ** 2)  # obj (8 objects per 640 image)
