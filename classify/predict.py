@@ -70,7 +70,7 @@ def run(
         half=False,  # use FP16 half-precision inference
         dnn=False,  # use OpenCV DNN for ONNX inference
         vid_stride=1,  # video frame-rate stride
-        wdw=400,  # window size for moving average
+        wdw_fix=200,  # window size for moving average
         confidence=0.5,  # confidence threshold
         dangerous_tsh=0.8,  # dangerous threshold
         temperature=0.648,  # temperature scaling
@@ -159,8 +159,10 @@ def run(
             all_preds['classes'].append(top5i[0])
             all_preds['confidences'].append(round(prob[top5i[0]].item(), 4))
 
-            # if enough predictions, compute moving average
-            if len(all_preds['classes']) > wdw:
+            # if enough predictions, compute moving average (varying window size at the beginning and then fixed one)
+            # warmup
+            if len(all_preds['classes']) > 10:
+                wdw = min(len(all_preds['classes']), wdw_fix)
                 # if the mean confidence of the last wdw predictions is higher than the threshold
                 # then the decision is the most frequent class in the last wdw predictions
                 most_occurring_class_idx = max(set(all_preds['classes'][-wdw:]),
@@ -204,12 +206,13 @@ def run(
             avg_text = f"Decision: {all_preds['decision_confidence'][-1]:.2f} {names[all_preds['decision'][-1]]}"
             if save_img or view_img:  # Add bbox to image
                 annotator.text((32, 32), text, txt_color=(255, 255, 255))
-                if len(all_preds['dangerous_wdw']) > wdw:
-                    annotator.text((32, 150), avg_text, txt_color=(255, 255, 255))
-                    if all_preds['dangerous_wdw'][-1] > dangerous_tsh:
-                        annotator.text((32, 200), f"Dangerous:{np.round(all_preds['dangerous_wdw'][-1], 2)}", txt_color=(0, 0, 255))
-                    else:
-                        annotator.text((32, 200), f"Safe", txt_color=(0, 255, 0))
+                annotator.text((32, 150), avg_text, txt_color=(255, 255, 255))
+                #if len(all_preds['dangerous_wdw']) > wdw:
+                    # used to be here annotator.text((32, 150), avg_text, txt_color=(255, 255, 255))
+                    #if all_preds['dangerous_wdw'][-1] > dangerous_tsh:
+                    #    annotator.text((32, 200), f"Dangerous:{np.round(all_preds['dangerous_wdw'][-1], 2)}", txt_color=(0, 0, 255))
+                    #else:
+                    #    annotator.text((32, 200), f"Safe", txt_color=(0, 255, 0))
             if save_txt:  # Write to file
                 with open(f'{txt_path}.txt', 'a') as f:
                     f.write(text + '\n')
@@ -277,7 +280,7 @@ def parse_opt():
     parser.add_argument('--half', action='store_true', help='use FP16 half-precision inference')
     parser.add_argument('--dnn', action='store_true', help='use OpenCV DNN for ONNX inference')
     parser.add_argument('--vid-stride', type=int, default=1, help='video frame-rate stride')
-    parser.add_argument('--wdw', type=int, default=500, help='window size for moving average (video only)')
+    parser.add_argument('--wdw_fix', type=int, default=500, help='window size for moving average (video only)')
     parser.add_argument('--confidence', type=float, default=0.5, help='confidence threshold')
     parser.add_argument('--dangerous_tsh', type=float, default=0.8, help='dangerous confidence threshold')
     parser.add_argument('--temperature', type=float, default=0.648, help='temperature to apply to logits')
