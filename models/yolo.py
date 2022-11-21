@@ -120,13 +120,13 @@ class BaseModel(nn.Module):
                 self._profile_one_layer(m, x, dt)
 
             x = m(x)  # run
-            # print(x)
+            print(m.i)
             y.append(x if m.i in self.save else None)  # save output
             if visualize:
                 feature_visualization(x, m.type, m.i, save_dir=visualize)
             # The classification head has to be the second to last layer
             # TODO change it so that it is not hardcoded
-            if m.i == self.model[-2].i:  # classification head
+            if m.i == self.model[10].i:  # classification head
                 pred_cls = x
             # The detection head has to be the last layer
             if m.i == self.model[-1].i:  # detection head
@@ -335,12 +335,13 @@ class HybridModel(BaseModel):
         self.inplace = self.yaml.get('inplace', True)
 
         # Build strides, anchors
-        m = self.model[-1]  # Detect()
+        m = self.model[-2]  # Detect()
         if isinstance(m, (Detect, Segment)):
             s = 256  # 2x min stride
             m.inplace = self.inplace
             forward = lambda x: self.forward(x)[0] if isinstance(m, Segment) else self.forward(x)
-            m.stride = torch.tensor([s / x.shape[-2] for x in self.forward(torch.zeros(1, ch, s, s))[0]])  # forward
+            m.stride = torch.tensor([s / x.shape[-2] for x in self.forward(torch.zeros(1, ch, s, s))])  # forward
+
             check_anchor_order(m)
             m.anchors /= m.stride.view(-1, 1, 1)
             self.stride = m.stride
@@ -462,7 +463,8 @@ def parse_model(d, ch, multitasks=True):  # model_dict, input_channels(3)
     layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
     print("Multi-task: ", multitasks)
     if multitasks:
-        to_enumerate = d['backbone'] + d['det_bone'] + d['cls_head'] + d['det_head']   # model, heads
+        # TO ADD
+        to_enumerate = d['backbone'] + d['det_bone'] + d['cls_head']   # model, heads
     else:
         to_enumerate = d['backbone'] + d['head']  # model, head
 

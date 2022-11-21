@@ -44,19 +44,18 @@ det_bone:
    [-1, 1, Conv, [512, 3, 2]],  # 21
    [[-1, 10], 1, Concat, [1]],  # 22 -- cat head P5
    [-1, 3, C3, [1024, False]],  # 23 (P5/32-large)
+   [[17, 20, 23], 1, Detect, [nc, anchors]]  # 24 --- Detect(P3, P4, P5)
   ]
 
 cls_head:
   [
-    # classification head
-    [9, 1, Classify, [512, nc_cls ] ],     # 9.1 - 24 - out=bx3
-    # det head0
+    [9, 1, Classify, [512, nc_cls]],     # 9.1 - 24 - out=bx3
   ]
 
-
-det_head:
-  [
-    # classification head
-    [[17, 20, 23], 1, Detect, [nc, anchors]]  # 25 --- Detect(P3, P4, P5)
-    # det head0
-  ]
+#
+#det_head:
+#  [
+#    # classification head
+#
+#    # det head0
+#  ]
