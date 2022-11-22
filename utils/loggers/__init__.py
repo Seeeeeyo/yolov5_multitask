@@ -282,7 +282,7 @@ class Loggers():
 
         if self.wandb:
             if best_fitness == fi:
-                best_results = [epoch] + vals[3:7]
+                best_results = [epoch] + vals[4:15]
                 for i, name in enumerate(self.best_keys):
                     self.wandb.wandb_run.summary[name] = best_results[i]  # log best results in the summary
             self.wandb.log(x)

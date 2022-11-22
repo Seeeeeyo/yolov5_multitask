@@ -465,6 +465,9 @@ class LoadImagesAndLabels(Dataset):
         self.albumentations = Albumentations(size=img_size) if augment else None
         self.gt_csv_path = gt_csv_path
 
+        # self.torch_transforms = classify_transforms(self.img_size)
+        # self.albumentations = classify_albumentations(augment, self.img_size) if augment else None
+
         try:
             f = []  # image files
             for p in path if isinstance(path, list) else [path]:
@@ -703,14 +706,14 @@ class LoadImagesAndLabels(Dataset):
             if labels.size:  # normalized xywh to pixel xyxy format
                 labels[:, 1:] = xywhn2xyxy(labels[:, 1:], ratio[0] * w, ratio[1] * h, padw=pad[0], padh=pad[1])
 
-            if self.augment:
-                img, labels = random_perspective(img,
-                                                 labels,
-                                                 degrees=hyp['degrees'],
-                                                 translate=hyp['translate'],
-                                                 scale=hyp['scale'],
-                                                 shear=hyp['shear'],
-                                                 perspective=hyp['perspective'])
+            # if self.augment:
+            #     img, labels = random_perspective(img,
+            #                                      labels,
+            #                                      degrees=hyp['degrees'],
+            #                                      translate=hyp['translate'],
+            #                                      scale=hyp['scale'],
+            #                                      shear=hyp['shear'],
+            #                                      perspective=hyp['perspective'])
 
         nl = len(labels)  # number of labels
         if nl:
@@ -720,10 +723,11 @@ class LoadImagesAndLabels(Dataset):
             # Albumentations
             # TODO check if I should give the cls labels as well to the augmentations
             img, labels = self.albumentations(img, labels)
+            # sample = self.album_transforms(image=cv2.cvtColor(img, cv2.COLOR_BGR2RGB))["image"]
             nl = len(labels)  # update after albumentations
 
             # HSV color-space
-            augment_hsv(img, hgain=hyp['hsv_h'], sgain=hyp['hsv_s'], vgain=hyp['hsv_v'])
+            # augment_hsv(img, hgain=hyp['hsv_h'], sgain=hyp['hsv_s'], vgain=hyp['hsv_v'])
 
             # Flip up-down
             if random.random() < hyp['flipud']:

@@ -45,6 +45,7 @@ from utils.general import (LOGGER, Profile, check_dataset, check_img_size, check
 from utils.metrics import ConfusionMatrix, ap_per_class, box_iou, scores_cls
 from utils.plots import output_to_target, plot_images, plot_val_study
 from utils.torch_utils import select_device, smart_inference_mode
+from utils.plots import imshow_cls
 import sklearn.metrics as met
 
 
@@ -160,7 +161,9 @@ def run(
     # Configure
     model.eval()
     cuda = device.type != 'cpu'
-    is_coco = isinstance(data.get('val'), str) and data['val'].endswith(f'coco{os.sep}val2017.txt')  # COCO dataset
+    # is_coco = isinstance(data.get('val'), str) and data['val'].endswith(f'coco{os.sep}val2017.txt')  # COCO dataset
+    # TODO remove this
+    is_coco = False
     nc = 1 if single_cls else int(data['nc'])  # number of classes
     nc_cls = int(data["nc_cls_road_cond"])  # number of classes (classification)
     iouv = torch.linspace(0.5, 0.95, 10, device=device)  # iou vector for mAP@0.5:0.95
@@ -304,8 +307,12 @@ def run(
 
         # Plot images
         if plots and batch_i < 3:
-            plot_images(im, targets, paths, save_dir / f'val_batch{batch_i}_labels.jpg', names)  # labels
-            plot_images(im, output_to_target(preds), paths, save_dir / f'val_batch{batch_i}_pred.jpg', names)  # pred
+            plot_images(im, targets, paths, save_dir / f'val_batch{batch_i}_det_labels.jpg', names)  # labels
+            plot_images(im, output_to_target(preds), paths, save_dir / f'val_batch{batch_i}_det_pred.jpg', names)  # pred
+            # TODO no hard code
+            names_cls_here = {0: 'dry', 1: 'snowy', 2: 'wet'}
+            imshow_cls(im, labels=targets_cls_np, pred=pred_max_ind_np, names=names_cls_here,
+                       f=save_dir / f'val_batch{batch_i}_cls.jpg')  # pred
 
         callbacks.run('on_val_batch_end', batch_i, im, targets, paths, shapes, preds)
 

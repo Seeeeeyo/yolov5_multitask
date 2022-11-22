@@ -49,13 +49,5 @@ det_bone:
 
 cls_head:
   [
-    [9, 1, Classify, [512, nc_cls]],     # 9.1 - 24 - out=bx3
+    [9, 1, Classify, [512, nc_cls]],     # 9.1 - 25 - out=bx3
   ]
-
-#
-#det_head:
-#  [
-#    # classification head
-#
-#    # det head0
-#  ]

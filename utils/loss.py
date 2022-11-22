@@ -187,7 +187,7 @@ class ComputeLoss:
         bs = tobj.shape[0]  # batch size
 
         # TODO mulitply by bs or not?
-        return (lbox + lobj + lcls) * bs, lcls_cls * bs, torch.cat((lbox, lobj, lcls)).detach(), lcls_cls.detach()
+        return (lbox + lobj + lcls) * bs, lcls_cls, torch.cat((lbox, lobj, lcls)).detach(), lcls_cls.detach()
 
     def build_targets(self, p, targets):
         # Build targets for compute_loss(), input targets(image,class,x,y,w,h)

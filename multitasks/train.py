@@ -55,9 +55,10 @@ from utils.loggers import Loggers
 from utils.loggers.comet.comet_utils import check_comet_resume
 from utils.loss import ComputeLoss
 from utils.metrics import fitness
-from utils.plots import plot_evolve
+from utils.plots import plot_evolve, imshow_cls
 from utils.torch_utils import (EarlyStopping, ModelEMA, de_parallel, select_device, smart_DDP, smart_optimizer,
                                smart_resume, torch_distributed_zero_first)
+from utils.loggers import GenericLogger
 
 LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable/elastic/run.html
 RANK = int(os.getenv('RANK', -1))
@@ -88,6 +89,9 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         yaml_save(save_dir / 'hyp.yaml', hyp)
         yaml_save(save_dir / 'opt.yaml', vars(opt))
 
+    # Logger
+    logger = GenericLogger(opt=opt, console_logger=LOGGER) if RANK in {-1, 0} else None
+
     # Loggers
     data_dict = None
     if RANK in {-1, 0}:
@@ -112,7 +116,9 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     nc = 1 if single_cls else int(data_dict['nc'])  # number of classes
     names = {0: 'item'} if single_cls and len(data_dict['names']) != 1 else data_dict['names']  # class names
     names_cls = {0: 'item'} if single_cls and len(data_dict['names_cls_road_cond']) != 1 else data_dict['names_cls_road_cond']  # class names
-    is_coco = isinstance(val_path, str) and val_path.endswith('coco/val2017.txt')  # COCO dataset
+    # is_coco = isinstance(val_path, str) and val_path.endswith('coco/val2017.txt')  # COCO dataset
+    # TODO change it later
+    is_coco = False
     # same, for classification
     train_cls_path, val_cls_path = data_dict['train_cls'], data_dict['val_cls']
     nc_cls_road_cond = int(data_dict['nc_cls_road_cond'])  # number of classes
@@ -248,6 +254,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                        workers=workers * 2,
                                        pad=0.5,
                                        prefix=colorstr('val: '),
+                                       shuffle=False,
                                        gt_cls_csv_path=val_cls_path)[0]
 
         if not resume:
@@ -272,6 +279,15 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     model.class_weights = labels_to_class_weights(dataset.labels, nc).to(device) * nc  # attach class weights
     model.names = names
     model.names_cls = names_cls
+
+    # Info
+    if RANK in {-1, 0}:
+        model.transforms = train_loader.dataset.albumentations  # attach inference transforms
+        model.augment = train_loader.dataset.augment  # attach augment
+        images, _, labels_cls, paths, _ = next(iter(train_loader))
+        file = imshow_cls(images[:16], labels_cls[:16], names=model.names_cls, f=save_dir / 'train_cls_images.jpg')
+        logger.log_images(file, name='Train Examples')
+        logger.log_graph(model, imgsz)  # log model
 
     # Start training
     t0 = time.time()
@@ -304,7 +320,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         # b = int(random.uniform(0.25 * imgsz, 0.75 * imgsz + gs) // gs * gs)
         # dataset.mosaic_border = [b - imgsz, -b]  # height, width borders
 
-        # change the 4 to 3+number of classification heads (so 4 right now)
         mloss = torch.zeros(3, device=device)  # mean losses
         mloss_cls = torch.zeros(1, device=device)  # mean loss for classification
         if RANK != -1:
@@ -350,14 +365,14 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             with torch.cuda.amp.autocast(amp):
                 preds = model(imgs)  # forward
                 det_pred, cls_pred = preds[0], preds[1]
-                if (i+1) != nb:  # if not the last batch
-                    # print(i)
-                    # print(pred[1].shape)
-                    assert cls_pred.shape == (batch_size, nc_cls_road_cond)
-                    assert targets_cls.shape == (batch_size,)
-                else:
-                    assert cls_pred.shape[1] == nc_cls_road_cond
-                assert targets.shape[1] == 6
+                # if (i+1) != nb:  # if not the last batch
+                #     # print(i)
+                #     # print(pred[1].shape)
+                #     assert cls_pred.shape == (batch_size, nc_cls_road_cond)
+                #     assert targets_cls.shape == (batch_size,)
+                # else:
+                #     assert cls_pred.shape[1] == nc_cls_road_cond
+                # assert targets.shape[1] == 6
 
                 # loss scaled by batch_size
                 loss, cls_loss, loss_items, cls_loss_item = compute_loss(preds,
@@ -386,8 +401,19 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             # Backward
             scaler.scale(loss_total).backward()
 
+
+            if only_cls:
+                # Optimize
+                scaler.unscale_(optimizer)  # unscale gradients
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0)  # clip gradients
+                scaler.step(optimizer)
+                scaler.update()
+                optimizer.zero_grad()
+                if ema:
+                    ema.update(model)
+
             # Optimize - https://pytorch.org/docs/master/notes/amp_examples.html
-            if ni - last_opt_step >= accumulate:
+            elif ni - last_opt_step >= accumulate:
                 scaler.unscale_(optimizer)  # unscale gradients
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0)  # clip gradients
                 scaler.step(optimizer)  # optimizer.step
@@ -497,6 +523,15 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                         callbacks.run('on_fit_epoch_end', list(mloss) + list(results) + lr, epoch, best_fitness, fi)
 
         callbacks.run('on_train_end', last, best, epoch, results)
+        # # Plot examples
+        # images, _, labels_cls, paths, _ = (x[:16] for x in next(iter(val_loader)))  # first 16 images and labels
+        # preds = torch.max(ema.ema(images.to(device)), 1)[1]
+        # file = imshow_cls(images, labels_cls, preds, model.names, verbose=False, f=save_dir / 'test_images.jpg')
+        #
+        # # Log results
+        # meta = {"epochs": epochs, "top1_acc": best_fitness, "date": datetime.now().isoformat()}
+        # logger.log_images(file, name='Test Examples (true-predicted)', epoch=epoch)
+        # logger.log_model(best, epochs, metadata=meta)
 
     torch.cuda.empty_cache()
     return results
