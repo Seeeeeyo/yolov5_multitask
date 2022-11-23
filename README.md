@@ -317,6 +317,44 @@ python export.py --weights yolov5s-cls.pt resnet50.pt efficientnet_b0.pt --inclu
 </details>
 
 
+## <div align="center">Classification + Detection ⭐ NEW</div>
+1 Classification head right now. More to come.
+Classifies 3 classes of road conditions: dry, snowy, wet. Detects speed signs, and road work.
+Training the classification:
+```bash
+# Single-GPU
+python multitasks/train.py --epochs 20 --img 224 --weights yolov5s-cls.pt --cfg models/yolov5s_mlt.yaml --data ../datasets/data_road_cond_seq_split_2_test/data.yaml --only_cls --batch-size 32
+```
+Training the detection:
+```bash
+# Single-GPU
+python multitasks/train.py --epochs 20 --img 224 --weights yolov5s-cls.pt --cfg models/yolov5s_mlt.yaml --data ... --only_det --batch-size 32
+```
+Training both tasks:
+```bash
+# Single-GPU
+python multitasks/train.py --epochs 20 --img 224 --weights yolov5s-cls.pt --cfg models/yolov5s_mlt.yaml --data ... --batch-size 32
+```
+The data should be in the following format:
+* data.yaml
+* train/
+    * images/
+        * .jpg
+    * labels/
+        * .txt (detection annotations, vanilla yolo format)
+* train_cls.csv
+    * | filename | road_condition |
+    * |  example.jpg  |        1       |    (0=dry, 1=snowy, 2= wet)
+* val/
+    * images/
+        * .jpg
+    * labels/
+        * .txt (detection annotations, vanilla yolo format)
+* val_cls.csv
+    * | filename | road_condition |
+    * |  example.jpg  |        1       |    (0=dry, 1=snowy, 2= wet)
+
+
 ## <div align="center">Environments</div>
 
 Get started in seconds with our verified environments. Click each icon below for details.
