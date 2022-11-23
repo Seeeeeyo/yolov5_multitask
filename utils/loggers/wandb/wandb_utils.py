@@ -164,9 +164,15 @@ class WandbLogger():
                                             allow_val_change=True)
                 opt.resume = model_artifact_name
         elif self.wandb:
+            project = Path(opt.project).stem
+            if opt.project == 'runs/train':
+                project = 'YOLOv5'
+            elif opt.project == 'runs/train-mlt':
+                project = 'YOLOv5-MLT'
+
             self.wandb_run = wandb.init(config=opt,
                                         resume="allow",
-                                        project='YOLOv5' if opt.project == 'runs/train' else Path(opt.project).stem,
+                                        project=project,
                                         entity=opt.entity,
                                         name=opt.name if opt.name != 'exp' else None,
                                         job_type=job_type,
