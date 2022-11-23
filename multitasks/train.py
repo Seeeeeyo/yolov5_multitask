@@ -115,7 +115,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     train_path, val_path = data_dict['train'], data_dict['val']
     nc = 1 if single_cls else int(data_dict['nc'])  # number of classes
     names = {0: 'item'} if single_cls and len(data_dict['names']) != 1 else data_dict['names']  # class names
-    names_cls = {0: 'item'} if single_cls and len(data_dict['names_cls_road_cond']) != 1 else data_dict['names_cls_road_cond']  # class names
+    names_cls = {0: 'item'} if single_cls and len(data_dict['names_cls_road_cond']) != 1 else data_dict[
+        'names_cls_road_cond']  # class names
     # is_coco = isinstance(val_path, str) and val_path.endswith('coco/val2017.txt')  # COCO dataset
     # TODO change it later
     is_coco = False
@@ -141,7 +142,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     amp = check_amp(model)  # check AMP
 
     # Freeze
-    freeze_till = [f'model.{x}.' for x in (freeze_till if len(freeze_till) > 1 else range(freeze_till[0]))]  # layers to freeze
+    freeze_till = [f'model.{x}.' for x in
+                   (freeze_till if len(freeze_till) > 1 else range(freeze_till[0]))]  # layers to freeze
     for k, v in model.named_parameters():
         v.requires_grad = True  # train all layers
         # v.register_hook(lambda x: torch.nan_to_num(x))  # NaN to 0 (commented for erratic training results)
@@ -242,20 +244,27 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
     # Process 0
     if RANK in {-1, 0}:
-        val_loader = create_dataloader(val_path,
-                                       imgsz,
-                                       batch_size // WORLD_SIZE * 2,
-                                       gs,
-                                       single_cls,
-                                       hyp=hyp,
-                                       cache=None if noval else opt.cache,
-                                       rect=True,
-                                       rank=-1,
-                                       workers=workers * 2,
-                                       pad=0.5,
-                                       prefix=colorstr('val: '),
-                                       shuffle=False,
-                                       gt_cls_csv_path=val_cls_path)[0]
+        val_loader, val_dataset = create_dataloader(val_path,
+                                                    imgsz,
+                                                    batch_size // WORLD_SIZE * 2,
+                                                    gs,
+                                                    single_cls,
+                                                    hyp=hyp,
+                                                    cache=None if noval else opt.cache,
+                                                    rect=opt.rect,
+                                                    rank=-1,
+                                                    workers=workers * 2,
+                                                    pad=0.5,
+                                                    prefix=colorstr('val: '),
+                                                    shuffle=True,
+                                                    gt_cls_csv_path=val_cls_path)
+        val_labels = np.concatenate(val_dataset.labels, 0)
+        val_labels_cls = val_dataset.road_cond_labels
+        val_mlc = int(val_labels[:, 0].max())  # max label class
+        val_mlc_cls = np.max(val_labels_cls)  # max label class
+        assert val_mlc < nc, f'Label class {val_mlc} exceeds nc={nc} in {data}. Possible class labels are 0-{nc - 1}'
+        assert val_mlc_cls < nc_cls_road_cond, f'Label class {val_mlc_cls} exceeds nc_cls_road_cond={nc_cls_road_cond}'\
+                                               f'in {data}. Possible class labels are 0-{nc_cls_road_cond - 1} '
 
         if not resume:
             if not opt.noautoanchor:
@@ -284,9 +293,15 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     if RANK in {-1, 0}:
         model.transforms = train_loader.dataset.albumentations  # attach inference transforms
         model.augment = train_loader.dataset.augment  # attach augment
+        # train set
         images, _, labels_cls, paths, _ = next(iter(train_loader))
         file = imshow_cls(images[:16], labels_cls[:16], names=model.names_cls, f=save_dir / 'train_cls_images.jpg')
         logger.log_images(file, name='Train Examples')
+        logger.log_graph(model, imgsz)  # log model
+        # validation set
+        images, _, labels_cls, paths, _ = next(iter(val_loader))
+        file = imshow_cls(images[:16], labels_cls[:16], names=model.names_cls, f=save_dir / 'val_cls_images.jpg')
+        logger.log_images(file, name='Val Examples')
         logger.log_graph(model, imgsz)  # log model
 
     # Start training
@@ -326,18 +341,14 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             train_loader.sampler.set_epoch(epoch)
         pbar = enumerate(train_loader)
         # TODO Add  'rc_loss',
-        LOGGER.info(('\n' + '%11s' * 8) % ('Epoch', 'GPU_mem', 'box_loss', 'obj_loss', 'cls_loss', 'rc_loss', 'Instances', 'Size'))
+        LOGGER.info(('\n' + '%11s' * 8) % (
+        'Epoch', 'GPU_mem', 'box_loss', 'obj_loss', 'cls_loss', 'rc_loss', 'Instances', 'Size'))
         if RANK in {-1, 0}:
             pbar = tqdm(pbar, total=nb, bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')  # progress bar
         optimizer.zero_grad()
 
-        # cls metrics for road condition
-        recall_cls_ep = []
-        f1_cls_ep = []
-        precis_cls_ep = []
-        acc_cls_ep = []
-
-        for i, (imgs, targets, targets_cls, paths, shapes) in pbar:  # batch -------------------------------------------------------------
+        for i, (imgs, targets, targets_cls, paths,
+                shapes) in pbar:  # batch -------------------------------------------------------------
             callbacks.run('on_train_batch_start')
             ni = i + nb * epoch  # number integrated batches (since train start)
             imgs = imgs.to(device, non_blocking=True).float() / 255  # uint8 to float32, 0-255 to 0.0-1.0
@@ -401,7 +412,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             # Backward
             scaler.scale(loss_total).backward()
 
-
             if only_cls:
                 # Optimize
                 scaler.unscale_(optimizer)  # unscale gradients
@@ -429,7 +439,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 mloss_cls = (mloss_cls * i + cls_loss_item) / (i + 1)  # update mean losses
                 mem = f'{torch.cuda.memory_reserved() / 1E9 if torch.cuda.is_available() else 0:.3g}G'  # (GB)
                 pbar.set_description(('%11s' * 2 + '%11.4g' * 6) %
-                                     (f'{epoch}/{epochs - 1}', mem, *mloss, mloss_cls,targets.shape[0], imgs.shape[-1]))
+                                     (
+                                     f'{epoch}/{epochs - 1}', mem, *mloss, mloss_cls, targets.shape[0], imgs.shape[-1]))
                 callbacks.run('on_train_batch_end', model, ni, imgs, targets, paths, list(mloss))
                 if callbacks.stop_training:
                     return
@@ -446,19 +457,20 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             final_epoch = (epoch + 1 == epochs) or stopper.possible_stop
             if not noval or final_epoch:  # Calculate mAP
                 results, maps, stats, t = validate.run(data_dict,
-                                                batch_size=batch_size // WORLD_SIZE * 2,
-                                                imgsz=imgsz,
-                                                half=amp,
-                                                model=ema.ema,
-                                                single_cls=single_cls,
-                                                dataloader=val_loader,
-                                                save_dir=save_dir,
-                                                plots=False,
-                                                callbacks=callbacks,
-                                                compute_loss=compute_loss)
+                                                       batch_size=batch_size // WORLD_SIZE * 2,
+                                                       imgsz=imgsz,
+                                                       half=amp,
+                                                       model=ema.ema,
+                                                       single_cls=single_cls,
+                                                       dataloader=val_loader,
+                                                       save_dir=save_dir,
+                                                       plots=False,
+                                                       callbacks=callbacks,
+                                                       compute_loss=compute_loss)
 
             # Update best mAP
-            fi = fitness(np.array(results).reshape(1, -1), 3)  # weighted combination of [P, R, mAP@.5, mAP@.5-.95, P_cls, R_cls]
+            fi = fitness(np.array(results).reshape(1, -1),
+                         3)  # weighted combination of [P, R, mAP@.5, mAP@.5-.95, P_cls, R_cls]
             stop = stopper(epoch=epoch, fitness=fi)  # early stop check
             if fi > best_fitness:
                 best_fitness = fi
@@ -570,8 +582,10 @@ def parse_opt(known=False):
     parser.add_argument('--label-smoothing', type=float, default=0.0, help='Label smoothing epsilon')
     parser.add_argument('--patience', type=int, default=100, help='EarlyStopping patience (epochs without improvement)')
     parser.add_argument('--freeze', nargs='+', type=int, default=[], help='Freeze layers: backbone=10, first3=0 1 2')
-    parser.add_argument('--freeze_till', nargs='+', type=int, default=[0], help='Freeze layers till: backbone=10, first3=0 1 2')
-    parser.add_argument("--freeze_all_but", nargs="+", type=int, default=[], help="Freeze all layers besides ...: backbone=10, first3=0 1 2",)
+    parser.add_argument('--freeze_till', nargs='+', type=int, default=[0],
+                        help='Freeze layers till: backbone=10, first3=0 1 2')
+    parser.add_argument("--freeze_all_but", nargs="+", type=int, default=[],
+                        help="Freeze all layers besides ...: backbone=10, first3=0 1 2", )
     parser.add_argument("--only_cls", action="store_true", help="If the model is only training for classification")
     parser.add_argument("--only_det", action="store_true", help="If the model is only training for detection")
     parser.add_argument('--save-period', type=int, default=-1, help='Save checkpoint every x epochs (disabled if < 1)')

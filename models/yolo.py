@@ -456,6 +456,7 @@ class ClassificationModel(BaseModel):
 
 def parse_model(d, ch, multitasks=True):  # model_dict, input_channels(3)
     # Parse a YOLOv5 model.yaml dictionary
+    LOGGER.info("Multitasks: %s", multitasks)
     LOGGER.info(f"\n{'':>3}{'from':>18}{'n':>3}{'params':>10}  {'module':<40}{'arguments':<30}")
     anchors, nc, gd, gw, act = d['anchors'], d['nc'], d['depth_multiple'], d['width_multiple'], d.get('activation')
     nc_cls = d["nc_cls"] if multitasks else None  # number of classes for classification task
@@ -466,7 +467,6 @@ def parse_model(d, ch, multitasks=True):  # model_dict, input_channels(3)
     no = na * (nc + 5)  # number of outputs = anchors * (classes + 5)
 
     layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
-    print("Multi-task: ", multitasks)
     if multitasks:
         # TO ADD
         to_enumerate = d['backbone'] + d['det_bone'] + d['cls_head']   # model, heads

@@ -161,8 +161,6 @@ def run(
     # Configure
     model.eval()
     cuda = device.type != 'cpu'
-    # is_coco = isinstance(data.get('val'), str) and data['val'].endswith(f'coco{os.sep}val2017.txt')  # COCO dataset
-    # TODO remove this
     is_coco = False
     nc = 1 if single_cls else int(data['nc'])  # number of classes
     nc_cls = int(data["nc_cls_road_cond"])  # number of classes (classification)
@@ -330,6 +328,7 @@ def run(
 
     # Compute classification metrics
     acc_cls = round(sum(acc_cls_ep) / len(acc_cls_ep), 3)
+    # TODO compute the confusion matrix
     #confusion_matrix_cls.compute(stats_cls['label'], stats_cls['pred'])
     scores_per_class, scores_macro = scores_cls(stats_cls['pred'], stats_cls['label'])
 
@@ -435,7 +434,7 @@ def run(
     #         stats_cls,
     #         t,
     #     )
-    # return (mp, mr, map50, map, *(loss.cpu() / len(dataloader)).tolist()), maps, t
+
 
 
 
