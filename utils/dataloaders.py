@@ -465,9 +465,6 @@ class LoadImagesAndLabels(Dataset):
         self.albumentations = Albumentations(size=img_size) if augment else None
         self.gt_csv_path = gt_csv_path
 
-        # self.torch_transforms = classify_transforms(self.img_size)
-        # self.albumentations = classify_albumentations(augment, self.img_size) if augment else None
-
         try:
             f = []  # image files
             for p in path if isinstance(path, list) else [path]:
@@ -494,7 +491,10 @@ class LoadImagesAndLabels(Dataset):
         # for each image, get the road_condition label from the dataframe by matching the image name
         self.cls_labels_road_cond = [self.cls_labels_df.loc[self.cls_labels_df['filename']
                                                                  == os.path.basename(x)]['road_condition'].values[0] for x in self.im_files]
+        self.detection_to_check = [self.cls_labels_df.loc[self.cls_labels_df['filename']
+                                                                 == os.path.basename(x)]['detect'].values[0] for x in self.im_files]
         self.cls_labels_road_cond = list(self.cls_labels_road_cond)
+        self.detection_to_check = list(self.detection_to_check)
         # Check cache
         self.label_files = img2label_paths(self.im_files)  # labels
 
@@ -518,7 +518,7 @@ class LoadImagesAndLabels(Dataset):
         # Read cache
         [cache.pop(k) for k in ('hash', 'version', 'msgs')]  # remove items
         # TODO Refactor
-        labels, road_cond_labels, shapes, self.segments = zip(*cache.values())
+        labels, road_cond_labels, det_to_check, shapes, self.segments = zip(*cache.values())
         nl = len(np.concatenate(labels, 0))  # number of labels
         nl_cls = len(road_cond_labels)  # number of labels
         assert nl > 0 or not augment, f'{prefix}All labels empty in {cache_path}, can not start training. {HELP_URL}'
@@ -529,6 +529,7 @@ class LoadImagesAndLabels(Dataset):
         self.label_files = img2label_paths(cache.keys())  # update
         # TODO refactor
         self.road_cond_labels = list(road_cond_labels)
+        self.det_to_check = list(det_to_check)
 
         # Filter images
         if min_items:
@@ -540,6 +541,7 @@ class LoadImagesAndLabels(Dataset):
             self.segments = [self.segments[i] for i in include]
             self.shapes = self.shapes[include]  # wh
             self.cls_labels = [self.cls_labels[i] for i in include]
+            self.road_cond_labels = [self.road_cond_labels[i] for i in include]
 
         # Create indices
         n = len(self.shapes)  # number of images
@@ -564,29 +566,29 @@ class LoadImagesAndLabels(Dataset):
                     self.segments[i][:, 0] = 0
 
         # Rectangular Training
-        if self.rect:
-            # Sort by aspect ratio
-            s = self.shapes  # wh
-            ar = s[:, 1] / s[:, 0]  # aspect ratio
-            irect = ar.argsort()
-            self.im_files = [self.im_files[i] for i in irect]
-            self.label_files = [self.label_files[i] for i in irect]
-            self.labels = [self.labels[i] for i in irect]
-            self.segments = [self.segments[i] for i in irect]
-            self.shapes = s[irect]  # wh
-            ar = ar[irect]
-
-            # Set training image shapes
-            shapes = [[1, 1]] * nb
-            for i in range(nb):
-                ari = ar[bi == i]
-                mini, maxi = ari.min(), ari.max()
-                if maxi < 1:
-                    shapes[i] = [maxi, 1]
-                elif mini > 1:
-                    shapes[i] = [1, 1 / mini]
-
-            self.batch_shapes = np.ceil(np.array(shapes) * img_size / stride + pad).astype(int) * stride
+        # if self.rect:
+        #     # Sort by aspect ratio
+        #     s = self.shapes  # wh
+        #     ar = s[:, 1] / s[:, 0]  # aspect ratio
+        #     irect = ar.argsort()
+        #     self.im_files = [self.im_files[i] for i in irect]
+        #     self.label_files = [self.label_files[i] for i in irect]
+        #     self.labels = [self.labels[i] for i in irect]
+        #     self.segments = [self.segments[i] for i in irect]
+        #     self.shapes = s[irect]  # wh
+        #     ar = ar[irect]
+        #
+        #     # Set training image shapes
+        #     shapes = [[1, 1]] * nb
+        #     for i in range(nb):
+        #         ari = ar[bi == i]
+        #         mini, maxi = ari.min(), ari.max()
+        #         if maxi < 1:
+        #             shapes[i] = [maxi, 1]
+        #         elif mini > 1:
+        #             shapes[i] = [1, 1 / mini]
+        #
+        #     self.batch_shapes = np.ceil(np.array(shapes) * img_size / stride + pad).astype(int) * stride
 
         # Cache images into RAM/disk for faster training
         if cache_images == 'ram' and not self.check_cache_ram(prefix=prefix):
@@ -642,7 +644,7 @@ class LoadImagesAndLabels(Dataset):
                 ne += ne_f
                 nc += nc_f
                 if im_file:
-                    x[im_file] = [lb, self.cls_labels_road_cond[i], shape, segments]
+                    x[im_file] = [lb, self.cls_labels_road_cond[i], self.detection_to_check[i], shape, segments]
                     i += 1
                 if msg:
                     msgs.append(msg)
@@ -701,6 +703,7 @@ class LoadImagesAndLabels(Dataset):
 
             labels = self.labels[index].copy()
             cls_labels = int(self.road_cond_labels[index])
+            detection_to_check = int(self.detection_to_check[index])
             # assert type(cls_labels) == int
 
             if labels.size:  # normalized xywh to pixel xyxy format
@@ -753,7 +756,7 @@ class LoadImagesAndLabels(Dataset):
         img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
         img = np.ascontiguousarray(img)
 
-        return torch.from_numpy(img), labels_out, torch.tensor(cls_labels), self.im_files[index], shapes
+        return torch.from_numpy(img), labels_out, torch.tensor(cls_labels), torch.tensor(detection_to_check), self.im_files[index], shapes
 
     def load_image(self, i):
         # Loads 1 image from dataset index 'i', returns (im, original hw, resized hw)
@@ -916,12 +919,14 @@ class LoadImagesAndLabels(Dataset):
 
     @staticmethod
     def collate_fn(batch):
-        im, label, cls_label, path, shapes = zip(*batch)  # transposed
+        im, label, cls_label, det_to_check, path, shapes = zip(*batch)  # transposed
         for i, lb in enumerate(label):
             lb[:, 0] = i  # add target image index for build_targets()
         stacked_cls_labels = torch.stack(cls_label, 0)
         assert stacked_cls_labels.shape[0] == len(batch)
-        return torch.stack(im, 0), torch.cat(label, 0), stacked_cls_labels, path, shapes
+        stacked_det_to_check = torch.stack(det_to_check, 0)
+        assert stacked_det_to_check.shape[0] == len(batch)
+        return torch.stack(im, 0), torch.cat(label, 0), stacked_cls_labels, stacked_det_to_check, path, shapes
 
     # TODO Handle this case in the future
     # @staticmethod

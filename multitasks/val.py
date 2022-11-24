@@ -219,7 +219,7 @@ def run(
     jdict, stats, ap, ap_class = [], [], [], []
     callbacks.run('on_val_start')
     pbar = tqdm(dataloader, desc=s, bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')  # progress bar
-    for batch_i, (im, targets, targets_cls, paths, shapes) in enumerate(pbar):
+    for batch_i, (im, targets, targets_cls, det_to_check, paths, shapes) in enumerate(pbar):
         callbacks.run('on_val_batch_start')
         with dt[0]:
             if cuda:
@@ -237,7 +237,7 @@ def run(
         # Loss
         if compute_loss:
             output_for_loss = (det_train_out, pred_cls)
-            _, _, loss_, cls_loss_ = compute_loss(output_for_loss, targets, targets_cls)
+            _, _, loss_, cls_loss_ = compute_loss(output_for_loss, targets, targets_cls, det_to_check)
             loss += loss_
             cls_loss += cls_loss_
 
@@ -309,7 +309,7 @@ def run(
             plot_images(im, output_to_target(preds), paths, save_dir / f'val_batch{batch_i}_det_pred.jpg', names)  # pred
             # TODO no hard code
             names_cls_here = {0: 'dry', 1: 'snowy', 2: 'wet'}
-            imshow_cls(im, labels=targets_cls_np, pred=pred_max_ind_np, names=names_cls_here,
+            imshow_cls(im*255, labels=targets_cls_np, pred=pred_max_ind_np, names=names_cls_here,
                        f=save_dir / f'val_batch{batch_i}_cls.jpg')  # pred
 
         callbacks.run('on_val_batch_end', batch_i, im, targets, paths, shapes, preds)

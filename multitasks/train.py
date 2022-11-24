@@ -250,6 +250,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                                     gs,
                                                     single_cls,
                                                     hyp=hyp,
+                                                    augment=False,
                                                     cache=None if noval else opt.cache,
                                                     rect=opt.rect,
                                                     rank=-1,
@@ -294,12 +295,12 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         model.transforms = train_loader.dataset.albumentations  # attach inference transforms
         model.augment = train_loader.dataset.augment  # attach augment
         # train set
-        images, _, labels_cls, paths, _ = next(iter(train_loader))
+        images, _, labels_cls, det_to_check, paths, _ = next(iter(train_loader))
         file = imshow_cls(images[:16], labels_cls[:16], names=model.names_cls, f=save_dir / 'train_cls_images.jpg')
         logger.log_images(file, name='Train Examples')
         logger.log_graph(model, imgsz)  # log model
         # validation set
-        images, _, labels_cls, paths, _ = next(iter(val_loader))
+        images, _, labels_cls, det_to_check, paths, _ = next(iter(val_loader))
         file = imshow_cls(images[:16], labels_cls[:16], names=model.names_cls, f=save_dir / 'val_cls_images.jpg')
         logger.log_images(file, name='Val Examples')
         logger.log_graph(model, imgsz)  # log model
@@ -347,7 +348,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             pbar = tqdm(pbar, total=nb, bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')  # progress bar
         optimizer.zero_grad()
 
-        for i, (imgs, targets, targets_cls, paths,
+        for i, (imgs, targets, targets_cls, det_to_check, paths,
                 shapes) in pbar:  # batch -------------------------------------------------------------
             callbacks.run('on_train_batch_start')
             ni = i + nb * epoch  # number integrated batches (since train start)
@@ -387,7 +388,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
                 # loss scaled by batch_size
                 loss, cls_loss, loss_items, cls_loss_item = compute_loss(preds,
-                                                                         targets.to(device), targets_cls.to(device))
+                                                                         targets.to(device), targets_cls.to(device),
+                                                                         det_to_check.to(device))
 
                 cls_loss_item = cls_loss_item.new_tensor([cls_loss_item])
                 all_loss_items = torch.cat((loss_items, cls_loss_item), dim=0)
@@ -571,7 +573,7 @@ def parse_opt(known=False):
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--multi-scale', action='store_true', help='vary img-size +/- 50%%')
     parser.add_argument('--single-cls', action='store_true', help='train multi-class data as single-class')
-    parser.add_argument('--optimizer', type=str, choices=['SGD', 'Adam', 'AdamW'], default='SGD', help='optimizer')
+    parser.add_argument('--optimizer', type=str, choices=['SGD', 'Adam', 'AdamW'], default='Adam', help='optimizer')
     parser.add_argument('--sync-bn', action='store_true', help='use SyncBatchNorm, only available in DDP mode')
     parser.add_argument('--workers', type=int, default=8, help='max dataloader workers (per RANK in DDP mode)')
     parser.add_argument('--project', default=ROOT / 'runs/train-mlt', help='save to project/name')
