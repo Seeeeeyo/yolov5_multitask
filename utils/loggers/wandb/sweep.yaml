@@ -22,12 +22,13 @@ metric:
 
 parameters:
   # hyperparameters: set either min, max range or values list
-  data:
-    value: "data/coco128.yaml"
+
   batch_size:
-    values: [64]
+    values: [32]
   epochs:
-    values: [10]
+    values: [50]
+  img_size:
+    values: [224, 512]
 
   lr0:
     distribution: uniform
@@ -57,6 +58,11 @@ parameters:
     distribution: uniform
     min: 0.0
     max: 0.2
+
+  obj:
+    distribution: uniform
+    min: 0.2
+    max: 4.0
   box:
     distribution: uniform
     min: 0.02
@@ -65,14 +71,15 @@ parameters:
     distribution: uniform
     min: 0.2
     max: 4.0
+  cls_road_cond:
+    distribution: uniform
+    min: 0.0001
+    max: 1
+
   cls_pw:
     distribution: uniform
     min: 0.5
     max: 2.0
-  obj:
-    distribution: uniform
-    min: 0.2
-    max: 4.0
   obj_pw:
     distribution: uniform
     min: 0.5
@@ -132,7 +139,7 @@ parameters:
   mosaic:
     distribution: uniform
     min: 0.0
-    max: 1.0
+    max: 0.0
   mixup:
     distribution: uniform
     min: 0.0
@@ -140,4 +147,4 @@ parameters:
   copy_paste:
     distribution: uniform
     min: 0.0
-    max: 1.0
+    max: 0.0

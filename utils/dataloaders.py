@@ -693,6 +693,10 @@ class LoadImagesAndLabels(Dataset):
         else:
             # Load image
             img, (h0, w0), (h, w) = self.load_image(index)
+            #if img.max() > 1:
+            #    img = img.astype(np.float32) / 255.0
+            #if img.min() < 0 or img.max() > 1:
+            #    print('OUPS', img.min(), img.max(), img.shape, self.im_files[index])
 
             # Letterbox
             shape = self.batch_shapes[self.batch[index]] if self.rect else self.img_size  # final letterboxed shape

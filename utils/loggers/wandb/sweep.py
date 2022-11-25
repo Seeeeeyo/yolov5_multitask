@@ -25,12 +25,14 @@ def sweep():
     opt.save_dir = str(increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok or opt.evolve))
     opt.epochs = hyp_dict.get("epochs")
     opt.nosave = True
-    opt.data = hyp_dict.get("data")
+    opt.data = '/home/selim/Desktop/datasets/hybrid/data.yaml'
     opt.weights = str(opt.weights)
     opt.cfg = str(opt.cfg)
-    opt.data = str(opt.data)
-    opt.hyp = str(opt.hyp)
+    #opt.hyp = str(hyp_dict.hyp)
     opt.project = str(opt.project)
+    opt.img_size = hyp_dict.get("img_size")
+    opt.weights = 'yolov5s.pt'
+    opt.cfg = 'models/yolov5s_mlt.yaml'
     device = select_device(opt.device, batch_size=opt.batch_size)
 
     # train

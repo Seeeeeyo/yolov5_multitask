@@ -184,6 +184,7 @@ class ComputeLoss:
         lbox *= self.hyp['box']
         lobj *= self.hyp['obj']
         lcls *= self.hyp['cls']
+        lcls_cls *= self.hyp['cls_road_cond']  # classification loss weight
         bs = tobj.shape[0]  # batch size
 
         # TODO mulitply by bs or not?

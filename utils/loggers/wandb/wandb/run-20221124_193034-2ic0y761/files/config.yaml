@@ -1,0 +1,49 @@
+wandb_version: 1
+
+_wandb:
+  desc: null
+  value:
+    cli_version: 0.12.21
+    framework: torch
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    python_version: 3.8.10
+    start_time: 1669336234
+    t:
+      1:
+      - 1
+      - 41
+      - 55
+      2:
+      - 1
+      - 41
+      - 55
+      4: 3.8.10
+      5: 0.12.21
+      8:
+      - 5
+data_dict:
+  desc: null
+  value:
+    names:
+      '0': speed_limit
+      '1': rw_tcd
+      '2': highway
+      '3': interchange
+      '4': urban
+      '5': rural-paved
+      '6': rural-dirt
+      '7': parking
+      '8': res1
+      '9': res2
+    names_cls_road_cond:
+    - dry
+    - snowy
+    - wet
+    nc: 10
+    nc_cls_road_cond: 3
+    path: /home/selim/Desktop/datasets/hybrid
+    train: /home/selim/Desktop/datasets/hybrid/train/images
+    train_cls: /home/selim/Desktop/datasets/hybrid/train_labels.csv
+    val: /home/selim/Desktop/datasets/hybrid/val/images
+    val_cls: /home/selim/Desktop/datasets/hybrid/val_labels.csv

@@ -309,6 +309,7 @@ def run(
             plot_images(im, output_to_target(preds), paths, save_dir / f'val_batch{batch_i}_det_pred.jpg', names)  # pred
             # TODO no hard code
             names_cls_here = {0: 'dry', 1: 'snowy', 2: 'wet'}
+            im = im * 255
             imshow_cls(im, labels=targets_cls_np, pred=pred_max_ind_np, names=names_cls_here,
                        f=save_dir / f'val_batch{batch_i}_cls.jpg')  # pred
 
