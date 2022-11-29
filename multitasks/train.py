@@ -236,11 +236,12 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                               shuffle=True,
                                               gt_cls_csv_path=train_cls_path)
     labels = np.concatenate(dataset.labels, 0)
+    if not only_cls:
+        mlc = int(labels[:, 0].max())  # max label class
+        assert mlc < nc, f'Label class {mlc} exceeds nc={nc} in {data}. Possible class labels are 0-{nc - 1}'
     labels_cls = dataset.road_cond_labels
-    mlc = int(labels[:, 0].max())  # max label class
     mlc_cls = np.max(labels_cls)  # max label class
-    assert mlc < nc, f'Label class {mlc} exceeds nc={nc} in {data}. Possible class labels are 0-{nc - 1}'
-    assert mlc_cls < nc_cls_road_cond, f'Label class {mlc} exceeds nc_cls_road_cond={nc_cls_road_cond} in {data}. Possible class labels are 0-{nc_cls_road_cond - 1}'
+    assert mlc_cls < nc_cls_road_cond, f'Label class {mlc_cls} exceeds nc_cls_road_cond={nc_cls_road_cond} in {data}. Possible class labels are 0-{nc_cls_road_cond - 1}'
 
     # Process 0
     if RANK in {-1, 0}:
@@ -259,11 +260,12 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                                     prefix=colorstr('val: '),
                                                     shuffle=True,
                                                     gt_cls_csv_path=val_cls_path)
-        val_labels = np.concatenate(val_dataset.labels, 0)
+        if not only_cls:
+            val_labels = np.concatenate(val_dataset.labels, 0)
+            val_mlc = int(val_labels[:, 0].max())  # max label class
+            assert val_mlc < nc, f'Label class {val_mlc} exceeds nc={nc} in {data}. Possible class labels are 0-{nc - 1}'
         val_labels_cls = val_dataset.road_cond_labels
-        val_mlc = int(val_labels[:, 0].max())  # max label class
         val_mlc_cls = np.max(val_labels_cls)  # max label class
-        assert val_mlc < nc, f'Label class {val_mlc} exceeds nc={nc} in {data}. Possible class labels are 0-{nc - 1}'
         assert val_mlc_cls < nc_cls_road_cond, f'Label class {val_mlc_cls} exceeds nc_cls_road_cond={nc_cls_road_cond}'\
                                                f'in {data}. Possible class labels are 0-{nc_cls_road_cond - 1} '
 
@@ -341,7 +343,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         if RANK != -1:
             train_loader.sampler.set_epoch(epoch)
         pbar = enumerate(train_loader)
-        # TODO Add  'rc_loss',
+        # TODO Add  'Instance_cls' to the progress bar
         LOGGER.info(('\n' + '%11s' * 8) % (
         'Epoch', 'GPU_mem', 'box_loss', 'obj_loss', 'cls_loss', 'rc_loss', 'Instances', 'Size'))
         if RANK in {-1, 0}:
@@ -411,29 +413,30 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 if opt.quad:
                     loss *= 4.
 
-            # Backward
-            scaler.scale(loss_total).backward()
+            if loss_total.requires_grad and loss_total.item() != 0:
+                # Backward
+                scaler.scale(loss_total).backward()
 
-            if only_cls:
-                # Optimize
-                scaler.unscale_(optimizer)  # unscale gradients
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0)  # clip gradients
-                scaler.step(optimizer)
-                scaler.update()
-                optimizer.zero_grad()
-                if ema:
-                    ema.update(model)
+                if only_cls:
+                    # Optimize
+                    scaler.unscale_(optimizer)  # unscale gradients
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0)  # clip gradients
+                    scaler.step(optimizer)
+                    scaler.update()
+                    optimizer.zero_grad()
+                    if ema:
+                        ema.update(model)
 
-            # Optimize - https://pytorch.org/docs/master/notes/amp_examples.html
-            elif ni - last_opt_step >= accumulate:
-                scaler.unscale_(optimizer)  # unscale gradients
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0)  # clip gradients
-                scaler.step(optimizer)  # optimizer.step
-                scaler.update()
-                optimizer.zero_grad()
-                if ema:
-                    ema.update(model)
-                last_opt_step = ni
+                # Optimize - https://pytorch.org/docs/master/notes/amp_examples.html
+                elif ni - last_opt_step >= accumulate:
+                    scaler.unscale_(optimizer)  # unscale gradients
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0)  # clip gradients
+                    scaler.step(optimizer)  # optimizer.step
+                    scaler.update()
+                    optimizer.zero_grad()
+                    if ema:
+                        ema.update(model)
+                    last_opt_step = ni
 
             # Log
             if RANK in {-1, 0}:
@@ -468,7 +471,9 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                                        save_dir=save_dir,
                                                        plots=False,
                                                        callbacks=callbacks,
-                                                       compute_loss=compute_loss)
+                                                       compute_loss=compute_loss,
+                                                       only_det=only_det,
+                                                       only_cls=only_cls)
 
             # Update best mAP
             fi = fitness(np.array(results).reshape(1, -1),
@@ -553,13 +558,13 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
 def parse_opt(known=False):
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', type=str, default=ROOT / 'yolov5s.pt', help='initial weights path')
-    parser.add_argument('--cfg', type=str, default='', help='model.yaml path')
+    parser.add_argument('--weights', type=str, help='initial weights path')
+    parser.add_argument('--cfg', type=str, default=ROOT / 'models/yolov5s_mlt.yaml', help='model.yaml path')
     parser.add_argument('--data', type=str, default=ROOT / 'dataset/', help='dataset.yaml path')
     parser.add_argument('--hyp', type=str, default=ROOT / 'data/hyps/hyp.scratch-low.yaml', help='hyperparameters path')
     parser.add_argument('--epochs', type=int, default=100, help='total training epochs')
-    parser.add_argument('--batch-size', type=int, default=16, help='total batch size for all GPUs, -1 for autobatch')
-    parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='train, val image size (pixels)')
+    parser.add_argument('--batch-size', type=int, default=32, help='total batch size for all GPUs, -1 for autobatch')
+    parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=520, help='train, val image size (pixels)')
     parser.add_argument('--rect', action='store_true', help='rectangular training')
     parser.add_argument('--resume', nargs='?', const=True, default=False, help='resume most recent training')
     parser.add_argument('--nosave', action='store_true', help='only save final checkpoint')
@@ -573,7 +578,7 @@ def parse_opt(known=False):
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--multi-scale', action='store_true', help='vary img-size +/- 50%%')
     parser.add_argument('--single-cls', action='store_true', help='train multi-class data as single-class')
-    parser.add_argument('--optimizer', type=str, choices=['SGD', 'Adam', 'AdamW'], default='Adam', help='optimizer')
+    parser.add_argument('--optimizer', type=str, choices=['SGD', 'Adam', 'AdamW'], default='SGD', help='optimizer')
     parser.add_argument('--sync-bn', action='store_true', help='use SyncBatchNorm, only available in DDP mode')
     parser.add_argument('--workers', type=int, default=8, help='max dataloader workers (per RANK in DDP mode)')
     parser.add_argument('--project', default=ROOT / 'runs/train-mlt', help='save to project/name')
@@ -583,7 +588,7 @@ def parse_opt(known=False):
     parser.add_argument('--cos-lr', action='store_true', help='cosine LR scheduler')
     parser.add_argument('--label-smoothing', type=float, default=0.0, help='Label smoothing epsilon')
     parser.add_argument('--patience', type=int, default=100, help='EarlyStopping patience (epochs without improvement)')
-    parser.add_argument('--freeze', nargs='+', type=int, default=[], help='Freeze layers: backbone=10, first3=0 1 2')
+    parser.add_argument('--freeze', nargs='+', type=int, default=[], help='Freeze layers: first3=0 1 2')
     parser.add_argument('--freeze_till', nargs='+', type=int, default=[0],
                         help='Freeze layers till: backbone=10, first3=0 1 2')
     parser.add_argument("--freeze_all_but", nargs="+", type=int, default=[],
@@ -593,6 +598,8 @@ def parse_opt(known=False):
     parser.add_argument('--save-period', type=int, default=-1, help='Save checkpoint every x epochs (disabled if < 1)')
     parser.add_argument('--seed', type=int, default=0, help='Global training seed')
     parser.add_argument('--local_rank', type=int, default=-1, help='Automatic DDP Multi-GPU argument, do not modify')
+    parser.add_argument('--mlt', nargs='+', type=int, default=[0],
+                        help='number of epochs for each mlt training stage: detection task and then classification task')
 
     # Logger arguments
     parser.add_argument('--entity', default=None, help='Entity')

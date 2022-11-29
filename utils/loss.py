@@ -129,9 +129,10 @@ class ComputeLoss:
         (p, cls_pred) = preds
 
         # filter on the images to check for the detections
-        # img_to_be_checked_idx = torch.where(det_to_check == 1)[0]
         # p = (p[0][img_to_be_checked_idx], p[1][img_to_be_checked_idx], p[2][img_to_be_checked_idx])
         # targets = targets[torch.where(torch.isin(targets[:,0], img_to_be_checked_idx))[0]]
+        #img_to_be_checked_idx = torch.where(det_to_check == 1)[0].to(self.device)
+        #preds = [preds[i] for i in img_to_be_checked_idx]
 
         lcls = torch.zeros(1, device=self.device)  # class loss
         lbox = torch.zeros(1, device=self.device)  # box loss
