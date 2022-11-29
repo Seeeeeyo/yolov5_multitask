@@ -298,7 +298,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         model.augment = train_loader.dataset.augment  # attach augment
         # train set
         images, _, labels_cls, det_to_check, paths, _ = next(iter(train_loader))
-        file = imshow_cls(images[:16], labels_cls[:16], names=model.names_cls, f=save_dir / 'train_cls_images.jpg')
+        file = imshow_cls(images[:16], labels_cls[:16], names=model.names_cls, f=save_dir / 'train_cls_images.jpg', mosaic=True if only_det else False)
         logger.log_images(file, name='Train Examples')
         logger.log_graph(model, imgsz)  # log model
         # validation set
@@ -391,7 +391,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 # loss scaled by batch_size
                 loss, cls_loss, loss_items, cls_loss_item = compute_loss(preds,
                                                                          targets.to(device), targets_cls.to(device),
-                                                                         det_to_check.to(device))
+                                                                         det_to_check.to(device),
+                                                                         mosaic=True if only_det else False)
 
                 cls_loss_item = cls_loss_item.new_tensor([cls_loss_item])
                 all_loss_items = torch.cat((loss_items, cls_loss_item), dim=0)

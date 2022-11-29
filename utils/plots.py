@@ -444,7 +444,7 @@ def plot_labels(labels, names=(), save_dir=Path('')):
     plt.close()
 
 
-def imshow_cls(im, labels=None, pred=None, names=None, nmax=25, verbose=False, f=Path('images.jpg')):
+def imshow_cls(im, labels=None, pred=None, names=None, nmax=25, verbose=False, f=Path('images.jpg'), mosaic=False):
     # Show classification image grid with labels (optional) and predictions (optional)
     from utils.augmentations import denormalize
 
@@ -465,7 +465,7 @@ def imshow_cls(im, labels=None, pred=None, names=None, nmax=25, verbose=False, f
         # ax[i].imshow(blocks[i].squeeze().permute((1, 2, 0)).numpy().clip(0.0, 1.0))
         ax[i].imshow(blocks[i].squeeze().permute((1, 2, 0)).numpy().astype(np.uint8))
         ax[i].axis('off')
-        if labels is not None:
+        if labels is not None and not mosaic:
             # true --- predicted
             s = names[labels[i]] + (f'—{names[pred[i]]}' if pred is not None else '')
             ax[i].set_title(s, fontsize=8, verticalalignment='top')

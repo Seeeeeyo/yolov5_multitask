@@ -124,7 +124,7 @@ class ComputeLoss:
         self.device = device
         self.multitasks = multitasks
 
-    def __call__(self, preds, targets, targets_cls, det_to_check):  # predictions, targets, array of 0 and 1, meaning if
+    def __call__(self, preds, targets, targets_cls, det_to_check, mosaic=False):  # predictions, targets, array of 0 and 1, meaning if
         # the detection is to be checked
         (p, cls_pred) = preds
 
@@ -140,9 +140,11 @@ class ComputeLoss:
         tcls, tbox, indices, anchors = self.build_targets(p, targets)  # targets
 
         # Classification loss
-        if self.multitasks:
+        if self.multitasks and not mosaic:
             assert cls_pred is not None
             lcls_cls = self.CEloss(cls_pred, targets_cls)
+        else:
+            lcls_cls = torch.zeros(1, device=self.device)
 
         # Detection Losses
         for i, pi in enumerate(p):  # layer index, layer predictions
