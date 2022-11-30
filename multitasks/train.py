@@ -234,7 +234,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                               quad=opt.quad,
                                               prefix=colorstr('train: '),
                                               shuffle=True,
-                                              gt_cls_csv_path=train_cls_path)
+                                              gt_cls_csv_path=train_cls_path,
+                                              only_det=only_det)
     labels = np.concatenate(dataset.labels, 0)
     if not only_cls:
         mlc = int(labels[:, 0].max())  # max label class

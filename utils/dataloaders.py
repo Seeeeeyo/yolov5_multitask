@@ -119,6 +119,7 @@ def create_dataloader(path,
                       prefix='',
                       shuffle=False,
                       gt_cls_csv_path=None,
+                      only_det=False
                       ):
     if rect and shuffle:
         LOGGER.warning('WARNING ⚠️ --rect is incompatible with DataLoader shuffle, setting shuffle=False')
@@ -137,7 +138,8 @@ def create_dataloader(path,
             pad=pad,
             image_weights=image_weights,
             prefix=prefix,
-            gt_csv_path=gt_cls_csv_path)
+            gt_csv_path=gt_cls_csv_path,
+            only_det=only_det)
 
     batch_size = min(batch_size, len(dataset))
     nd = torch.cuda.device_count()  # number of CUDA devices
@@ -452,13 +454,15 @@ class LoadImagesAndLabels(Dataset):
                  pad=0.0,
                  min_items=0,
                  prefix='',
-                 gt_csv_path=None):
+                 gt_csv_path=None,
+                 only_det=False):
         self.img_size = img_size
         self.augment = augment
         self.hyp = hyp
         self.image_weights = image_weights
         self.rect = False if image_weights else rect
-        self.mosaic = self.augment and not self.rect  # load 4 images at a time into a mosaic (only during training)
+        # load 4 images at a time into a mosaic (only during training the detection task)
+        self.mosaic = self.augment and not self.rect and only_det
         self.mosaic_border = [-img_size // 2, -img_size // 2]
         self.stride = stride
         self.path = path
