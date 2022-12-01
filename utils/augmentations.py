@@ -58,7 +58,7 @@ class Albumentations:
             #    print(im)
             # keep the bottom part of the image
             if random.random() < self.cut_img:
-                im = im[int(im.shape[0] * 0.5):, :, :]
+                im = im[int(im.shape[0] * 0.5):, int(im.shape[1] * 0.1):int(im.shape[1] * 0.9):, :]
             new = self.transform(image=im, bboxes=labels[:, 1:], class_labels=labels[:, 0])  # transformed
             im, labels = new['image'], np.array([[c, *b] for c, b in zip(new['class_labels'], new['bboxes'])])
         return im, labels
