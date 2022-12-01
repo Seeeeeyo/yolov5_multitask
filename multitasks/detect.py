@@ -30,11 +30,12 @@ import os
 import platform
 import sys
 from pathlib import Path
-
+import numpy as np
 import torch
+import torch.nn.functional as F
 
 FILE = Path(__file__).resolve()
-ROOT = FILE.parents[0]  # YOLOv5 root directory
+ROOT = FILE.parents[1]  # YOLOv5 root directory
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))  # add ROOT to PATH
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
@@ -94,6 +95,7 @@ def run(
     device = select_device(device)
     model = DetectMultiBackend(weights, device=device, dnn=dnn, data=data, fp16=half)
     stride, names, pt = model.stride, model.names, model.pt
+    names_cls = {0: 'Dry', 1: 'Snowy', 2: 'Wet'}
     imgsz = check_img_size(imgsz, s=stride)  # check image size
 
     # Dataloader
@@ -107,6 +109,10 @@ def run(
     else:
         dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
     vid_path, vid_writer = [None] * bs, [None] * bs
+
+    # save the results
+    all_preds = {'classes': [], 'confidences': [], 'confidence_wdw': [], 'class_wdw': [],
+                 'decision': [], 'decision_confidence': []}
 
     # Run inference
     model.warmup(imgsz=(1 if pt or model.triton else bs, 3, *imgsz))  # warmup
@@ -122,7 +128,8 @@ def run(
         # Inference
         with dt[1]:
             visualize = increment_path(save_dir / Path(path).stem, mkdir=True) if visualize else False
-            pred = model(im, augment=augment, visualize=visualize)
+            preds = model(im, augment=augment, visualize=visualize)
+            (pred, cls_pred) = preds
 
         # NMS
         with dt[2]:
@@ -131,7 +138,10 @@ def run(
         # Second-stage classifier (optional)
         # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
 
-        # Process predictions
+        # Process classifications
+        prob = F.softmax(cls_pred, dim=1).squeeze()  # probabilities
+
+        # Process detections
         for i, det in enumerate(pred):  # per image
             seen += 1
             if webcam:  # batch_size >= 1
@@ -146,7 +156,58 @@ def run(
             s += '%gx%g ' % im.shape[2:]  # print string
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
             imc = im0.copy() if save_crop else im0  # for save_crop
-            annotator = Annotator(im0, line_width=line_thickness, example=str(names))
+            annotator = Annotator(im0, line_width=line_thickness, example=str(names), pil=True)
+
+            top5i = prob.argsort(descending=True).tolist()  # top 5 indices
+            s += f"{', '.join(f'{names_cls[j]} {prob[j]:.2f}' for j in top5i)}, "
+
+            all_preds['classes'].append(top5i[0])
+            all_preds['confidences'].append(round(prob[top5i[0]].item(), 4))
+
+            # if enough predictions, compute moving average (varying window size at the beginning and then fixed one)
+            # warmup
+            wdw_fix = 200
+            confidence = 0.6
+            if len(all_preds['classes']) > 10:
+                wdw = min(len(all_preds['classes']), wdw_fix)
+                # if the mean confidence of the last wdw predictions is higher than the threshold
+                # then the decision is the most frequent class in the last wdw predictions
+                most_occurring_class_idx = max(set(all_preds['classes'][-wdw:]),
+                                               key=all_preds['classes'][-wdw:].count)
+                indices = [i for i, x in enumerate(all_preds['classes'][-wdw:]) if x == most_occurring_class_idx]
+                # confidences of this class
+                confidences_most_occurring_class = np.array(all_preds['confidences'][-wdw:])[indices]
+                # mean confidence of this class in the sliding window weighted by a factor of time (the most recent predictions have a higher weight)
+                confidence_wdw = round(np.average(confidences_most_occurring_class,
+                                                  weights=range(1, len(confidences_most_occurring_class) + 1)), 3)
+                # save the sliding window results
+                all_preds['confidence_wdw'].append(confidence_wdw)
+                all_preds['class_wdw'].append(most_occurring_class_idx)
+
+                if confidence_wdw > confidence:
+                    all_preds['decision'].append(most_occurring_class_idx)
+                    all_preds['decision_confidence'].append(confidence_wdw)
+                    last_decision = most_occurring_class_idx
+                    last_confidence = confidence_wdw
+                else:
+                    # get the most recent prediction having enough confidence
+                    all_preds['decision'].append(last_decision)
+                    all_preds['decision_confidence'].append(last_confidence)
+            # if not enough predictions, just save the current prediction
+            else:
+                all_preds['decision'].append(all_preds['classes'][-1])
+                all_preds['decision_confidence'].append(all_preds['confidences'][-1])
+                last_decision = all_preds['classes'][-1]
+                last_confidence = all_preds['confidences'][-1]
+
+            # Write results
+            text = '\n'.join(f'{prob[j]:.2f} {names_cls[j]}' for j in top5i)
+            avg_text = f"Decision: {all_preds['decision_confidence'][-1]:.2f} {names_cls[all_preds['decision'][-1]]}"
+
+            if save_img or save_crop or view_img:  # Add bbox to image
+                annotator.text((32, 32), text, txt_color=(255, 255, 255))
+                annotator.text((32, 220), avg_text, txt_color=(255, 255, 255))
+
             if len(det):
                 # Rescale boxes from img_size to im0 size
                 det[:, :4] = scale_boxes(im.shape[2:], det[:, :4], im0.shape).round()
