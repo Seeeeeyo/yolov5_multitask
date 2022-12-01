@@ -23,7 +23,7 @@ def fitness(x, num_classes_cls):
     # Model fitness as a weighted combination of metrics (detection and classification tasks)
     if num_classes_cls != 2:
         # weights for [P, R, mAP@.5, mAP@.5-.95, P_cls, R_cls]
-        w = [0.0, 0.0, 0.2, 0.5, 0.15, 0.15]
+        w = [0.0, 0.0, 0.6, 0.1, 0.15, 0.15]
         return (x[:, :6] * w).sum(1)
     # else:
     #     # weights for [P, R, mAP@.5, mAP@.5-.95, P_cls, R_cls, P_dry, P_unsafe, R_dry, R_unsafe]
