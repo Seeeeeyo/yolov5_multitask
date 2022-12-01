@@ -77,6 +77,9 @@ def run(
         half=False,  # use FP16 half-precision inference
         dnn=False,  # use OpenCV DNN for ONNX inference
         vid_stride=1,  # video frame-rate stride
+        wdw_fix=200,  # window size for moving average
+        confidence=0.75,  # confidence threshold
+        temperature=1,  # temperature scaling
 ):
     source = str(source)
     save_img = not nosave and not source.endswith('.txt')  # save inference images
@@ -166,8 +169,6 @@ def run(
 
             # if enough predictions, compute moving average (varying window size at the beginning and then fixed one)
             # warmup
-            wdw_fix = 200
-            confidence = 0.6
             if len(all_preds['classes']) > 10:
                 wdw = min(len(all_preds['classes']), wdw_fix)
                 # if the mean confidence of the last wdw predictions is higher than the threshold
@@ -303,6 +304,9 @@ def parse_opt():
     parser.add_argument('--half', action='store_true', help='use FP16 half-precision inference')
     parser.add_argument('--dnn', action='store_true', help='use OpenCV DNN for ONNX inference')
     parser.add_argument('--vid-stride', type=int, default=1, help='video frame-rate stride')
+    parser.add_argument('--wdw_fix', type=int, default=200, help='window size for moving average (video only)')
+    parser.add_argument('--confidence', type=float, default=0.75, help='confidence threshold')
+    parser.add_argument('--temperature', type=float, default=1, help='temperature to apply to logits')
     opt = parser.parse_args()
     opt.imgsz *= 2 if len(opt.imgsz) == 1 else 1  # expand
     print_args(vars(opt))
