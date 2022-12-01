@@ -67,9 +67,10 @@ WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))
 
 def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictionary
     save_dir, epochs, batch_size, weights, single_cls, evolve, data, cfg, resume, noval, nosave, workers, freeze, \
-    freeze_till, freeze_all_but, only_cls, only_det = \
+    freeze_all, freeze_till, freeze_all_but, only_cls, only_det, cut_img = \
         Path(opt.save_dir), opt.epochs, opt.batch_size, opt.weights, opt.single_cls, opt.evolve, opt.data, opt.cfg, \
-        opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze, opt.freeze_till, opt.freeze_all_but, opt.only_cls, opt.only_det
+        opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze, opt.freeze_all, opt.freeze_till, opt.freeze_all_but, \
+        opt.only_cls, opt.only_det, opt.cut_img
     callbacks.run('on_pretrain_routine_start')
 
     # Directories
@@ -120,6 +121,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     # is_coco = isinstance(val_path, str) and val_path.endswith('coco/val2017.txt')  # COCO dataset
     # TODO change it later
     is_coco = False
+    check = False
     # same, for classification
     train_cls_path, val_cls_path = data_dict['train_cls'], data_dict['val_cls']
     nc_cls_road_cond = int(data_dict['nc_cls_road_cond'])  # number of classes
@@ -138,7 +140,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         model.load_state_dict(csd, strict=False)  # load
         LOGGER.info(f'Transferred {len(csd)}/{len(model.state_dict())} items from {weights}')  # report
     else:
-        model = Model(cfg, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
+        model = HybridModel(cfg, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
     amp = check_amp(model)  # check AMP
 
     # Freeze
@@ -174,6 +176,12 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 LOGGER.info(f"UNFREEZING {k}")
                 v.requires_grad = True
                 # torch.save(v.data, save_dir / f"frozen_{k}.pt")
+
+    if freeze_all:
+        LOGGER.info(f"freezing ALL layers")
+        for k, v in model.named_parameters():
+            v.requires_grad = False
+            LOGGER.info(f"freezing {k}")
 
     # Image size
     gs = max(int(model.stride.max()), 32)  # grid size (max stride)
@@ -235,7 +243,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                               prefix=colorstr('train: '),
                                               shuffle=True,
                                               gt_cls_csv_path=train_cls_path,
-                                              only_det=only_det)
+                                              only_det=only_det,
+                                              cut_img=opt.cut_img)
     labels = np.concatenate(dataset.labels, 0)
     if not only_cls:
         mlc = int(labels[:, 0].max())  # max label class
@@ -254,10 +263,10 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                                                     hyp=hyp,
                                                     augment=False,
                                                     cache=None if noval else opt.cache,
-                                                    rect=opt.rect,
+                                                    rect=False,
                                                     rank=-1,
                                                     workers=workers * 2,
-                                                    pad=0.5,
+                                                    # pad=0.5,
                                                     prefix=colorstr('val: '),
                                                     shuffle=True,
                                                     gt_cls_csv_path=val_cls_path)
@@ -355,7 +364,19 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 shapes) in pbar:  # batch -------------------------------------------------------------
             callbacks.run('on_train_batch_start')
             ni = i + nb * epoch  # number integrated batches (since train start)
+            if check:
+                assert imgs.shape[0] == det_to_check.shape[0] == len(paths) == len(shapes), \
+                    f'shapes {imgs.shape[0]} {det_to_check.shape[0]} {len(paths)} {len(shapes)} mismatch'
+                if only_det:
+                    assert imgs.shape[0] == targets.shape[0],\
+                        f'shapes {imgs.shape[0]} {targets.shape[0]} mismatch when only_det'
+                elif only_cls:
+                    assert imgs.shape[0] == targets_cls.shape[0], \
+                        f'shapes {imgs.shape[0]} {targets_cls.shape[0]} mismatch when only_cls'
+                assert imgs.shape[2] == imgs.shape[3] == imgsz
+                assert torch.max(imgs) >= 1.0, 'Images should not be normalized yet'
             imgs = imgs.to(device, non_blocking=True).float() / 255  # uint8 to float32, 0-255 to 0.0-1.0
+            assert torch.max(imgs) <= 1.0, 'Images should be normalized to 0.0-1.0'
             #imgs = imgs.to(device, non_blocking=True).float()
             # Warmup
             if ni <= nw:
@@ -560,7 +581,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
 def parse_opt(known=False):
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', type=str, help='initial weights path')
+    parser.add_argument('--weights', type=str, help='initial weights path. None by default')
     parser.add_argument('--cfg', type=str, default=ROOT / 'models/yolov5s_mlt.yaml', help='model.yaml path')
     parser.add_argument('--data', type=str, default=ROOT / 'dataset/', help='dataset.yaml path')
     parser.add_argument('--hyp', type=str, default=ROOT / 'data/hyps/hyp.scratch-low.yaml', help='hyperparameters path')
@@ -589,8 +610,10 @@ def parse_opt(known=False):
     parser.add_argument('--quad', action='store_true', help='quad dataloader')
     parser.add_argument('--cos-lr', action='store_true', help='cosine LR scheduler')
     parser.add_argument('--label-smoothing', type=float, default=0.0, help='Label smoothing epsilon')
+    parser.add_argument('--cut_img', type=float, default=0.0, help='probability of cutting the image (0.0 to 1.0) (default: 0.0)')
     parser.add_argument('--patience', type=int, default=100, help='EarlyStopping patience (epochs without improvement)')
     parser.add_argument('--freeze', nargs='+', type=int, default=[], help='Freeze layers: first3=0 1 2')
+    parser.add_argument('--freeze_all', action="store_true", help="If the model is only training for classification")
     parser.add_argument('--freeze_till', nargs='+', type=int, default=[0],
                         help='Freeze layers till: backbone=10, first3=0 1 2')
     parser.add_argument("--freeze_all_but", nargs="+", type=int, default=[],

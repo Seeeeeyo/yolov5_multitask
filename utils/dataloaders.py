@@ -119,7 +119,8 @@ def create_dataloader(path,
                       prefix='',
                       shuffle=False,
                       gt_cls_csv_path=None,
-                      only_det=False
+                      only_det=False,
+                      cut_img=0.0,
                       ):
     if rect and shuffle:
         LOGGER.warning('WARNING ⚠️ --rect is incompatible with DataLoader shuffle, setting shuffle=False')
@@ -139,7 +140,9 @@ def create_dataloader(path,
             image_weights=image_weights,
             prefix=prefix,
             gt_csv_path=gt_cls_csv_path,
-            only_det=only_det)
+            only_det=only_det,
+            cut_img=cut_img,
+        )
 
     batch_size = min(batch_size, len(dataset))
     nd = torch.cuda.device_count()  # number of CUDA devices
@@ -455,7 +458,8 @@ class LoadImagesAndLabels(Dataset):
                  min_items=0,
                  prefix='',
                  gt_csv_path=None,
-                 only_det=False):
+                 only_det=False,
+                 cut_img=0.0):
         self.img_size = img_size
         self.augment = augment
         self.hyp = hyp
@@ -468,6 +472,7 @@ class LoadImagesAndLabels(Dataset):
         self.path = path
         self.albumentations = Albumentations(size=img_size) if augment else None
         self.gt_csv_path = gt_csv_path
+        self.cut_img = cut_img
 
         try:
             f = []  # image files
