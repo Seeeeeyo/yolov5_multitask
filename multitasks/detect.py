@@ -115,7 +115,7 @@ def run(
 
     # save the results
     all_preds = {'classes': [], 'confidences': [], 'confidence_wdw': [], 'class_wdw': [],
-                 'decision': [], 'decision_confidence': []}
+                 'decision': [], 'decision_confidence': [], 'labels_detected': []}
 
     # Run inference
     model.warmup(imgsz=(1 if pt or model.triton else bs, 3, *imgsz))  # warmup
@@ -143,6 +143,27 @@ def run(
 
         # Process classifications
         prob = F.softmax(cls_pred, dim=1).squeeze()  # probabilities
+
+        # get the gradient of the output with respect to the parameters of the model
+        #pred[.....].backward()
+        # pull the gradients out of the model
+        #gradients = model.get_activations_gradient()
+        # pool the gradients across the channels
+        #pooled_gradients = torch.mean(gradients, dim=[0, 2, 3])
+        # get the activations of the last convolutional layer
+        #activations = model.get_activations(im.float()).detach()
+        # weight the channels by corresponding gradients
+        #for i in range(512):
+        #    activations[:, i, :, :] *= pooled_gradients[i]
+        # average the channels of the activations
+        #heatmap = torch.mean(activations, dim=1).squeeze()
+        # relu on top of the heatmap
+        # expression (2) in https://arxiv.org/pdf/1610.02391.pdf
+        #heatmap = np.maximum(heatmap, 0)
+        # normalize the heatmap
+        #heatmap /= torch.max(heatmap)
+        # draw the heatmap
+        #plt.matshow(heatmap.squeeze())
 
         # Process detections
         for i, det in enumerate(pred):  # per image
@@ -208,15 +229,19 @@ def run(
             if save_img or save_crop or view_img:  # Add bbox to image
                 annotator.text((32, 32), text, txt_color=(255, 255, 255))
                 annotator.text((32, 220), avg_text, txt_color=(255, 255, 255))
-
+            idx = len(all_preds['decision']) - 1
             if len(det):
                 # Rescale boxes from img_size to im0 size
                 det[:, :4] = scale_boxes(im.shape[2:], det[:, :4], im0.shape).round()
 
+                det_classes = []
                 # Print results
                 for c in det[:, 5].unique():
                     n = (det[:, 5] == c).sum()  # detections per class
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
+                    det_classes.append(int(c))
+
+                all_preds['labels_detected'].append(det_classes)
 
                 # Write results
                 for *xyxy, conf, cls in reversed(det):
@@ -229,7 +254,8 @@ def run(
                     if save_img or save_crop or view_img:  # Add bbox to image
                         c = int(cls)  # integer class
                         label = None if hide_labels else (names[c] if hide_conf else f'{names[c]} {conf:.2f}')
-                        annotator.box_label(xyxy, label, color=colors(c, True))
+                        if all(c in sublist for sublist in all_preds['labels_detected'][-3:]):
+                            annotator.box_label(xyxy, label, color=colors(c, True))
                     if save_crop:
                         save_one_box(xyxy, imc, file=save_dir / 'crops' / names[c] / f'{p.stem}.jpg', BGR=True)
 
