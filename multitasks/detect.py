@@ -77,8 +77,8 @@ def run(
         half=False,  # use FP16 half-precision inference
         dnn=False,  # use OpenCV DNN for ONNX inference
         vid_stride=1,  # video frame-rate stride
-        wdw_fix=200,  # window size for moving average
-        confidence=0.75,  # confidence threshold
+        wdw_fix=400,  # window size for moving average
+        confidence=0.85,  # confidence threshold
         temperature=1,  # temperature scaling
 ):
     source = str(source)
@@ -227,9 +227,9 @@ def run(
             avg_text = f"Decision: {all_preds['decision_confidence'][-1]:.2f} {names_cls[all_preds['decision'][-1]]}"
 
             if save_img or save_crop or view_img:  # Add bbox to image
-                annotator.text((32, 32), text, txt_color=(255, 255, 255))
-                annotator.text((32, 220), avg_text, txt_color=(255, 255, 255))
-            idx = len(all_preds['decision']) - 1
+                annotator.text((32, 32), text, txt_color=(44, 105, 236))
+                annotator.text((32, 220), avg_text, txt_color=(44, 105, 236))
+
             if len(det):
                 # Rescale boxes from img_size to im0 size
                 det[:, :4] = scale_boxes(im.shape[2:], det[:, :4], im0.shape).round()
