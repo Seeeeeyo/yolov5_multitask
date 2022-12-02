@@ -81,7 +81,7 @@ class Detect(nn.Module):
                     wh = wh.to(device)
                     xy = (xy * 2 + self.grid[i]) * self.stride[i]  # xy
                     wh = (wh * 2) ** 2 * self.anchor_grid[i]  # wh
-                    y = torch.cat((xy, wh, conf), 4)
+                    y = torch.cat((xy.to(device), wh.to(device), conf.to(device)), 4)
                 z.append(y.view(bs, self.na * nx * ny, self.no))
 
         return x if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), x)
@@ -116,6 +116,17 @@ class Segment(Detect):
 
 class BaseModel(nn.Module):
     # YOLOv5 base model
+    def __init__(self):  # ch, nc are model.yaml anchors and class number
+        super().__init__()
+        # placeholder for the gradients
+        self.gradients = None
+
+
+    def activations_hook(self, grad):
+        self.gradients = grad
+
+    def activations_hook(self, grad):
+        self.gradients = grad
     def forward(self, x, profile=False, visualize=False):
         return self._forward_once(x, profile, visualize)  # single-scale inference, train
 
@@ -128,6 +139,12 @@ class BaseModel(nn.Module):
                 self._profile_one_layer(m, x, dt)
 
             x = m(x)  # run
+            # save the gradients of each layer from 0 to 8 and 25
+            # check if it requires a gradient
+            #if m.requires_grad_():
+            #    if m.i <= 8 or m.i == 25:
+            #        h = x.register_hook(self.activations_hook)
+
             y.append(x if m.i in self.save else None)  # save output
             if visualize:
                 feature_visualization(x, m.type, m.i, save_dir=visualize)
@@ -342,6 +359,10 @@ class HybridModel(BaseModel):
         self.names = [str(i) for i in range(self.yaml['nc'])]  # default names
         self.names_cls = [str(i) for i in range(self.yaml["nc_cls"])]  # default cls names
         self.inplace = self.yaml.get('inplace', True)
+        # placeholder for the gradients
+        self.gradients = None
+        # disect the network to access its last convolutional layer
+        self.features_conv = self.model[:9].append(self.model[25])
 
         # Build strides, anchors
         m = self.model[-2]  # Detect()
@@ -363,14 +384,28 @@ class HybridModel(BaseModel):
         self.info()
         LOGGER.info('')
 
+
+    # hook for the gradients of the activations
+    def activations_hook(self, grad):
+        self.gradients = grad
+
     def forward(self, x, augment=False, profile=False, visualize=False):
         # TODO, deal with augment case in the future
+
         if augment:
             return self._forward_augment(x)  # augmented inference, None
         det_test, cls_test = self._forward_once(
             x, profile, visualize
         )  # single-scale inference, train
         return det_test, cls_test
+
+    # method for the gradient extraction
+    def get_activations_gradient(self):
+        return self.gradients
+
+    # method for the activation exctraction
+    def get_activations(self, x):
+        return self.features_conv(x)
 
     def _forward_augment(self, x):
         img_size = x.shape[-2:]  # height, width
