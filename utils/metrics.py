@@ -41,8 +41,10 @@ def smooth(y, f=0.05):
 
 def scores_cls(preds, targets):
     from sklearn.metrics import precision_recall_fscore_support as score
-    targets = np.concatenate(targets, axis=0)
-    preds = np.concatenate(preds)
+    if type(targets) == np.ndarray:
+        targets = np.concatenate(targets, axis=0)
+    if type(preds) == np.ndarray:
+        preds = np.concatenate(preds)
     precision_per_class, recall_per_class, fscore_per_class, support_per_class = score(targets, preds, zero_division=1)
     fpr_per_class = 1 - precision_per_class
 
