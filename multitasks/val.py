@@ -24,6 +24,7 @@ import json
 import os
 import sys
 from pathlib import Path
+import pandas as pd
 
 import numpy as np
 import torch
@@ -37,6 +38,7 @@ ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
 
 from models.common import DetectMultiBackend
+from models.yolo import Model, HybridModel
 from utils.callbacks import Callbacks
 from utils.dataloaders import create_dataloader
 from utils.general import (LOGGER, Profile, check_dataset, check_img_size, check_requirements, check_yaml,
@@ -128,7 +130,9 @@ def run(
         callbacks=Callbacks(),
         compute_loss=None,
         only_det=False,
-        only_cls=False
+        only_cls=False,
+        only_det_eval=False,
+        only_cls_eval=False,
 ):
     # Initialize/load model and set device
     training = model is not None
@@ -175,8 +179,7 @@ def run(
             ncm = model.model.nc
             assert ncm == nc, f'{weights} ({ncm} classes) trained on different --data than what you passed ({nc} ' \
                               f'classes). Pass correct combination of --weights and --data that are trained together.'
-            #ncm_cls = model.model.nc_cls
-            ncm_cls = 3
+            ncm_cls = len(model.model.names_cls)
             assert ncm_cls == nc_cls, (
                 f"{weights[0]} ({ncm_cls} classes) trained on different --data than what you passed ({nc_cls} "
                 f"classes). Pass correct combination of --weights and --data that are trained together."
@@ -191,7 +194,7 @@ def run(
                                        stride,
                                        single_cls,
                                        pad=pad,
-                                       rect=rect,
+                                       rect=False,
                                        workers=workers,
                                        prefix=colorstr(f'{task}: '),
                                        gt_cls_csv_path=data["val_cls"])[0]
@@ -207,8 +210,15 @@ def run(
     if isinstance(names_cls, (list, tuple)):  # old format
         names_cls = dict(enumerate(names_cls))
     class_map = coco80_to_coco91_class() if is_coco else list(range(1000))
-    s = ('%22s' + '%11s' * 11) % ('Class', 'Images', 'Instances', 'P', 'R', 'mAP50', 'mAP50-95', "cls_P", "cls_R",
-                                  "cls_fpr", "cls_f1", "cls_acc")
+
+    if only_det_eval:
+        s = ('%22s' + '%11s' * 6) % ('Class', 'Images', 'Instances', 'P', 'R', 'mAP50', 'mAP50-95')
+    elif only_cls_eval:
+        s = ('%22s' + '%11s' * 7) % ('Class', 'Images', 'Instances', "cls_P", "cls_R", "cls_fpr", "cls_f1", "cls_acc")
+    else:
+        s = ('%22s' + '%11s' * 11) % ('Class', 'Images', 'Instances', 'P', 'R', 'mAP50', 'mAP50-95', "cls_P", "cls_R",
+                                      "cls_fpr", "cls_f1", "cls_acc")
+
     # detection metrics
     tp, fp, p, r, f1, mp, mr, map50, ap50, map = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     # accuracy for classification
@@ -236,7 +246,10 @@ def run(
         # Inference
         with dt[1]:
             output = model(im) if compute_loss else (model(im, augment=augment), None)
-            preds, det_train_out, pred_cls = output[0][0], output[0][1], output[1]
+            if training:
+                preds, det_train_out, pred_cls = output[0][0], output[0][1], output[1]
+            else:
+                preds, pred_cls = output[0][0][0], output[0][1]
         # Loss
         if compute_loss:
             output_for_loss = (det_train_out, pred_cls)
@@ -252,9 +265,9 @@ def run(
         targets_cls_np = targets_cls.data.cpu().numpy()
         # classification metrics
         acc_cls_ep.append(met.accuracy_score(targets_cls_np, pred_max_ind_np))
-        stats_cls['pred'].append(pred_max_ind_np)
-        stats_cls['label'].append(targets_cls_np)
-        stats_cls['prob'].append(pred_max_log_np)
+        stats_cls['pred'].extend(pred_max_ind_np)
+        stats_cls['label'].extend(targets_cls_np)
+        stats_cls['prob'].extend(pred_max_log_np)
 
         if not only_cls:
             # NMS
@@ -342,16 +355,17 @@ def run(
     else:
         nt = np.array(0)
 
+    if nt.sum() == 0:
+        if not only_cls_eval:
+            LOGGER.warning(f'WARNING ⚠️ no labels found in {task} set, can not compute metrics without labels')
 
     # Compute classification metrics
     acc_cls = round(sum(acc_cls_ep) / len(acc_cls_ep), 3)
     # TODO compute the confusion matrix
     #confusion_matrix_cls.compute(stats_cls['label'], stats_cls['pred'])
     scores_per_class, scores_macro = scores_cls(stats_cls['pred'], stats_cls['label'])
-
     pr_cls, recall_cls, fpr_cls, f1_cls, support = scores_macro
     pr_per_class, recall_per_class, fpr_per_class, fscore_per_class, support_per_class = scores_per_class
-
     if nc_cls == 3:
         pr_dry = pr_per_class[0]
         pr_snowy = pr_per_class[1]
@@ -363,23 +377,36 @@ def run(
         recall_snowy = recall_per_class[1]
         recall_wet = recall_per_class[2]
 
-    # Print results
-    pf = '%22s' + '%11i' * 2 + '%11.3g' * 4 + "%11.4g" * 5  # print format
-    LOGGER.info(pf % ('all', seen, nt.sum(), mp, mr, map50, map, pr_cls, recall_cls, fpr_cls, f1_cls, acc_cls))
-    if nt.sum() == 0:
-        LOGGER.warning(f'WARNING ⚠️ no labels found in {task} set, can not compute metrics without labels')
+    if not only_det_eval and not only_cls_eval:
+        pf = '%22s' + '%11i' * 2 + '%11.3g' * 4 + "%11.3g" * 5  # print format
+        LOGGER.info(pf % ('all', seen, nt.sum(), mp, mr, map50, map, pr_cls, recall_cls, fpr_cls, f1_cls, acc_cls))
+    elif only_det_eval:
+        pf = '%22s' + '%11i' * 2 + '%11.3g' * 4
+        LOGGER.info(pf % ('all', seen, nt.sum(), mp, mr, map50, map))
+    elif only_cls_eval:
+        pf = '%22s' + '%11i' * 2 + '%11.3g' * 5
+        LOGGER.info(pf % ('all', seen, support_per_class.sum(), pr_cls, recall_cls, fpr_cls, f1_cls, acc_cls))
 
-    pf_ap_class = "%20s" + "%11i" * 2 + "%11.3g" * 4  # print format
-    pf_ap_class_cls = "%20s" + "%11i" * 2 + "%11s" * 4 + "%11.3g" * 4  # print format
-
+    pf_ap_class = "%22s" + "%11i" * 2 + "%11.3g" * 4  # print format
+    pf_ap_class_cls = "%22s" + "%11i" * 2 + "%11s" * 4 + "%11.3g" * 4  # print format
+    pf_ap_class_cls_only = "%22s" + "%11i" * 2 + "%11.3g" * 4  # print format
     # Print results per class
     if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
-        for i, c in enumerate(ap_class):
-            LOGGER.info(pf_ap_class % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
-        for i in range(nc_cls):
-            LOGGER.info(pf_ap_class_cls % (names_cls[i], seen, support_per_class[i], "-", "-", "-", "-",
-                                           pr_per_class[i], recall_per_class[i], fpr_per_class[i],
-                                           fscore_per_class[i]))
+        if not only_cls_eval and not only_det_eval:
+            for i, c in enumerate(ap_class):
+                LOGGER.info(pf_ap_class % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
+            for i in range(nc_cls):
+                LOGGER.info(pf_ap_class_cls % (names_cls[i], seen, support_per_class[i], "", "", "", "",
+                                               pr_per_class[i], recall_per_class[i], fpr_per_class[i],
+                                               fscore_per_class[i]))
+        elif only_det_eval:
+            for i, c in enumerate(ap_class):
+                LOGGER.info(pf_ap_class % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
+
+        elif only_cls_eval:
+            for i in range(nc_cls):
+                LOGGER.info(pf_ap_class_cls_only % (names_cls[i], seen, support_per_class[i], pr_per_class[i],
+                                               recall_per_class[i], fpr_per_class[i], fscore_per_class[i]))
 
     # Print speeds
     if seen == 0:
@@ -430,14 +457,27 @@ def run(
     for i, c in enumerate(ap_class):
         maps[c] = ap[i]
 
-    if nc_cls == 3:
-        return (
-            (mp, mr, map50, map, pr_cls, recall_cls, pr_snowy, pr_wet, recall_snowy, recall_wet, acc_cls,
-             *(val_loss_total.cpu() / len(dataloader)).tolist()),
-            maps,
-            stats_cls,
-            t,
-        )
+    if not only_det_eval:
+        # save cls_results to csv file
+        stats_cls_df = pd.DataFrame(stats_cls)
+        stats_cls_df.to_csv(save_dir / 'cls_results.csv', index=False)
+        torch.save(dataloader.dataset, save_dir / 'val_dataset.pth')
+
+    if training:
+        if nc_cls == 3:
+            return (
+                (mp, mr, map50, map, pr_cls, recall_cls, pr_snowy, pr_wet, recall_snowy, recall_wet, acc_cls,
+                 *(val_loss_total.cpu() / len(dataloader)).tolist()),
+                maps,
+                stats_cls,
+                t,
+            )
+    else:
+        if not only_det_eval:
+            return (mp, mr, map50, map, pr_cls, recall_cls, pr_snowy, pr_wet, recall_snowy, recall_wet, acc_cls)
+        else:
+            return (mp, mr, map50, map)
+    # TODO - add support for more than 3 classes
     # else:
     #     return (
     #         (mp, mr, map50, map, pr_cls, recall_cls, pr_dry, pr_unsafe, recall_dry, recall_unsafe, acc_cls,
@@ -471,6 +511,8 @@ def parse_opt():
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
     parser.add_argument('--half', action='store_true', help='use FP16 half-precision inference')
     parser.add_argument('--dnn', action='store_true', help='use OpenCV DNN for ONNX inference')
+    parser.add_argument('--only_det_eval', action='store_true', help='Evaluate only detection (when using esmart_wip)')
+    parser.add_argument('--only_cls_eval', action='store_true', help='Evaluate only classification (when using esmart_context)')
     opt = parser.parse_args()
     opt.data = check_yaml(opt.data)  # check YAML
     opt.save_json |= opt.data.endswith('coco.yaml')
