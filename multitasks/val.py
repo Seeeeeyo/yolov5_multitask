@@ -31,7 +31,7 @@ import torch
 from tqdm import tqdm
 
 FILE = Path(__file__).resolve()
-ROOT = FILE.parents[0]  # YOLOv5 root directory
+ROOT = FILE.parents[1]  # YOLOv5 root directory
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))  # add ROOT to PATH
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
@@ -133,6 +133,7 @@ def run(
         only_cls=False,
         only_det_eval=False,
         only_cls_eval=False,
+        temperature=1.0,
 ):
     # Initialize/load model and set device
     training = model is not None
@@ -257,6 +258,8 @@ def run(
             loss += loss_
             cls_loss += cls_loss_
 
+        # apply temperature scaling
+        pred_cls = pred_cls / temperature
         # get the predicted label (for classification task)
         pred_cls_logs = torch.softmax(pred_cls.data.detach(), dim=1)
         ped_cls_maxs = torch.max(pred_cls_logs, dim=1)
@@ -460,6 +463,8 @@ def run(
     if not only_det_eval:
         # save cls_results to csv file
         stats_cls_df = pd.DataFrame(stats_cls)
+        # rename columns
+        stats_cls_df.columns = ["test_pred", "test_gt", "test_prob"]
         stats_cls_df.to_csv(save_dir / 'cls_results.csv', index=False)
         torch.save(dataloader.dataset, save_dir / 'val_dataset.pth')
 
@@ -513,6 +518,7 @@ def parse_opt():
     parser.add_argument('--dnn', action='store_true', help='use OpenCV DNN for ONNX inference')
     parser.add_argument('--only_det_eval', action='store_true', help='Evaluate only detection (when using esmart_wip)')
     parser.add_argument('--only_cls_eval', action='store_true', help='Evaluate only classification (when using esmart_context)')
+    parser.add_argument('--temperature', type=float, default=1, help='Temperature scaling for classification')
     opt = parser.parse_args()
     opt.data = check_yaml(opt.data)  # check YAML
     opt.save_json |= opt.data.endswith('coco.yaml')
