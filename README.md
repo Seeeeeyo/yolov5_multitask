@@ -361,25 +361,26 @@ You can pull the hybrid dataset from its S3 bucket or reconstruct it with any da
 - train.txt
 - val.txt
 
-Training the classification:
+To train the classification, use the parameter *--only_cls*. Example:
 ```bash
 # Single-GPU
 python multitasks/train.py --epochs 20 --img 224 --weights yolov5s-cls.pt 
                            --cfg models/yolov5s_mlt.yaml --data ../datasets/data_road_cond_seq_split_2_test/data.yaml 
                            --only_cls --batch-size 32
 ```
-Training the detection:
+To train the detection, use the parameter *--only_cls*. Example:
+Use the parameter *--only_det*. Example:
 ```bash
 # Single-GPU
 python multitasks/train.py --epochs 20 --img 224 --weights yolov5s-cls.pt 
-                           --cfg models/yolov5s_mlt.yaml --data ... --only_det 
+                           --cfg models/yolov5s_mlt.yaml --data ../datasets/esmart_wip/data.yaml --only_det 
                            --batch-size 32
 ```
-Training both tasks:
+To train on both tasks, don't use any specific parameters but keep in mind to scale the cls loss in the hyperparameters file. Example:
 ```bash
 # Single-GPU
 python multitasks/train.py --epochs 20 --img 224 --weights yolov5s.pt 
-                           --cfg models/yolov5s_mlt.yaml --data ... --batch-size 32
+                           --cfg models/yolov5s_mlt.yaml --data ../datasets/hybrid/data.yaml --batch-size 32
 ```
 
 Here is the proposed recipe to reach good results on both tasks (training each task separately on their respective dataset):
