@@ -78,7 +78,7 @@ def run(
         dnn=False,  # use OpenCV DNN for ONNX inference
         vid_stride=1,  # video frame-rate stride
         wdw_fix=400,  # window size for moving average
-        confidence=0.85,  # confidence threshold
+        confidence=0.8,  # confidence threshold
         temperature=1,  # temperature scaling
 ):
     source = str(source)
@@ -142,6 +142,7 @@ def run(
         # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
 
         # Process classifications
+        cls_pred = cls_pred / temperature  # temperature scaling
         prob = F.softmax(cls_pred, dim=1).squeeze()  # probabilities
 
         # get the gradient of the output with respect to the parameters of the model
