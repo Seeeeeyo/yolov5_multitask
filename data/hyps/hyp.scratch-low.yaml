@@ -33,4 +33,4 @@ mosaic_det: 1.0  # image mosaic (probability)
 mosaic_cls: 0.0  # image mosaic (probability)
 mixup: 0.0  # image mixup (probability)
 copy_paste: 0.0  # segment copy-paste (probability)
-cls_road_cond: 1  # cls loss gain for road conditions
+cls_road_cond: 0.001  # cls loss gain for road conditions
