@@ -406,7 +406,8 @@ The road conditions classification on esmart_context:
 ```
 The detections on esmart_wip:
 ```bash
-!python multitasks/val.py --img 512 --weights {WEIGHTS} --data ../datasets/esmart_wip/data.yaml --batch-size 32 --only_det_eval
+!python multitasks/val.py --img 512 --weights {WEIGHTS} --data ../datasets/esmart_wip/data.yaml 
+                          --batch-size 32 --only_det_eval
 ```
   
 
