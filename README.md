@@ -386,7 +386,7 @@ Here is the **proposed recipe** to reach good results on both tasks (training ea
 ```
   
 2. The classification 
-[See Run](https://wandb.ai/esmart/YOLOv5/runs/17ol1gly?workspace=user-selimgilon](https://wandb.ai/esmart/YOLOv5/runs/ilovlhdf?workspace=user-selimgilon)
+[See Run](https://wandb.ai/esmart/YOLOv5/runs/ilovlhdf?workspace=user-selimgilon)
 ```bash
 !python multitasks/train.py --epochs 50 --img 512 --weights {LAST_WEIGHTS} --data ../datasets/esmart_context/data.yaml 
                             --batch-size 32 --only_cls --freeze_all_but 8 25 --cut_img 0.5
