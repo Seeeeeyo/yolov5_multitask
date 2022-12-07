@@ -378,7 +378,8 @@ python multitasks/train.py --epochs 20 --img 224 --weights yolov5s-cls.pt
 Training both tasks:
 ```bash
 # Single-GPU
-python multitasks/train.py --epochs 20 --img 224 --weights yolov5s-cls.pt --cfg models/yolov5s_mlt.yaml --data ... --batch-size 32
+python multitasks/train.py --epochs 20 --img 224 --weights yolov5s.pt 
+                           --cfg models/yolov5s_mlt.yaml --data ... --batch-size 32
 ```
 
 Here is the proposed recipe to reach good results on both tasks (training each task separately on their respective dataset):
@@ -390,15 +391,18 @@ Here is the proposed recipe to reach good results on both tasks (training each t
                             --batch-size 32 --only_det
 ```
 ```bash
-!python multitasks/train.py --epochs 50 --img 512 --weights {LAST_WEIGHTS} --data ../datasets/esmart_context/data.yaml --batch-size 32 --only_cls --freeze_all_but 8 25 --cut_img 0.5
+!python multitasks/train.py --epochs 50 --img 512 --weights {LAST_WEIGHTS} --data ../datasets/esmart_context/data.yaml 
+                            --batch-size 32 --only_cls --freeze_all_but 8 25 --cut_img 0.5
 ```
 ```bash
-!python multitasks/train.py --epochs 10 --img 512 --weights {LAST_WEIGHTS} --data ../datasets/esmart_wip/data.yaml --batch-size 32 --only_det --freeze 0 1 2 3 4 5 6 7 8 25
+!python multitasks/train.py --epochs 10 --img 512 --weights {LAST_WEIGHTS} --data ../datasets/esmart_wip/data.yaml 
+                            --batch-size 32 --only_det --freeze 0 1 2 3 4 5 6 7 8 25
 ```
 ### Evaluation
 The road conditions classification on esmart_context:
 ```bash
-!python multitasks/val.py --img 512 --weights {weights_path} --data ../datasets/esmart_context/data.yaml  --batch-size 32 --only_cls_eval --temperature 3
+!python multitasks/val.py --img 512 --weights {weights_path} --data ../datasets/esmart_context/data.yaml  
+                          --batch-size 32 --only_cls_eval --temperature 3
 ```
 The detections on esmart_wip:
 ```bash
