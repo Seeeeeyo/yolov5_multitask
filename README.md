@@ -332,29 +332,48 @@ You can either train on a hybrid dataset (with missing labels for the detection 
 Merging esmart_context and esmart_wip was done using the notebook *Prepare_data_yolo_multitasks.ipynb* 
 You can pull the hybrid dataset from its S3 bucket or reconstruct it with any data you would like. The following format needs to be respected:
 
-- *hybrid*
-  - data.yaml
-  - .jpg
-  - ...
-  - .txt (detection annotations, vanilla yolo format)
-  - ...
-  - train_cls.csv
-  - val_cls.csv
-    - | filename | road_condition | detect
-    - | example.jpg | (0=dry, 1=snowy, 2=wet) | 1 if use this img for detection (if from esmart_wip) 0 otherwise (no detrection label)
-    
-  - train.txt
-  - val.txt
+- data.yaml
+- .jpg
+- ...
+- .txt (detection annotations, vanilla yolo format)
+- ...
+- train_cls.csv
+- val_cls.csv
+  - | filename | road_condition | detect
+  - | example.jpg | (0=dry, 1=snowy, 2=wet) | 1 if use this img for detection (if from esmart_wip) 0 otherwise (no detrection label)
+
+- train.txt
+- val.txt
+  
+2) Option 2: 2 datasets
+  
+  This option is the best one so far. Both datasets (*esmat_context* and *esmart_wip*) need to be as the following as well: 
+
+- data.yaml
+- .jpg
+- ...
+- .txt (detection annotations, vanilla yolo format)
+- ...
+- train_cls.csv
+- val_cls.csv
+  - | filename | road_condition | detect
+  - | example.jpg | (0=dry, 1=snowy, 2=wet) | 1 if use this img for detection (if from esmart_wip) 0 otherwise (no detrection label)
+- train.txt
+- val.txt
 
 Training the classification:
 ```bash
 # Single-GPU
-python multitasks/train.py --epochs 20 --img 224 --weights yolov5s-cls.pt --cfg models/yolov5s_mlt.yaml --data ../datasets/data_road_cond_seq_split_2_test/data.yaml --only_cls --batch-size 32
+python multitasks/train.py --epochs 20 --img 224 --weights yolov5s-cls.pt 
+                           --cfg models/yolov5s_mlt.yaml --data ../datasets/data_road_cond_seq_split_2_test/data.yaml 
+                           --only_cls --batch-size 32
 ```
 Training the detection:
 ```bash
 # Single-GPU
-python multitasks/train.py --epochs 20 --img 224 --weights yolov5s-cls.pt --cfg models/yolov5s_mlt.yaml --data ... --only_det --batch-size 32
+python multitasks/train.py --epochs 20 --img 224 --weights yolov5s-cls.pt 
+                           --cfg models/yolov5s_mlt.yaml --data ... --only_det 
+                           --batch-size 32
 ```
 Training both tasks:
 ```bash
@@ -366,7 +385,9 @@ Here is the proposed recipe to reach good results on both tasks (training each t
 
 ### Training 
 ```bash
-!python multitasks/train.py --epochs 50 --img 512 --weights yolov5s.pt --data ../datasets/esmart_wip/data.yaml --batch-size 32 --only_det
+!python multitasks/train.py --epochs 50 --img 512 --weights yolov5s.pt 
+                            --data ../datasets/esmart_wip/data.yaml 
+                            --batch-size 32 --only_det
 ```
 ```bash
 !python multitasks/train.py --epochs 50 --img 512 --weights {LAST_WEIGHTS} --data ../datasets/esmart_context/data.yaml --batch-size 32 --only_cls --freeze_all_but 8 25 --cut_img 0.5
