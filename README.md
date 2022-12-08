@@ -317,42 +317,104 @@ python export.py --weights yolov5s-cls.pt resnet50.pt efficientnet_b0.pt --inclu
 </details>
 
 
-## <div align="center">Classification + Detection ⭐ NEW</div>
-1 Classification head right now. More to come.
+## <div align="center">Classification + Detection (Multitasks)⭐ NEW</div>
+### Description 
+One Classification head so far. 
 Classifies 3 classes of road conditions: dry, snowy, wet. Detects speed signs, and road work.
-Training the classification:
+
+Check the notebook yolo-mlt-train&evaluate.ipynb if you want to know more about the training and evaluation of yolo-mlt.
+
+### Data
+You can either train on a hybrid dataset (with missing labels for the detection task) or with 2 datasets (one for each task). I presonnaly recommend to use 2 datasets beacuse it has been more performant, at least for the data that we currently have. 
+
+1) Option 1: Hybrid 
+
+Merging esmart_context and esmart_wip was done using the notebook *Prepare_data_yolo_multitasks.ipynb* 
+You can pull the hybrid dataset from its S3 bucket or reconstruct it with any data you would like. The following format needs to be respected:
+
+- data.yaml
+- .jpg
+- ...
+- .txt (detection annotations, vanilla yolo format)
+- ...
+- train_cls.csv
+- val_cls.csv
+  - | filename | road_condition | detect
+  - | example.jpg | (0=dry, 1=snowy, 2=wet) | 1 if use this img for detection (if from esmart_wip) 0 otherwise (no detrection label)
+
+- train.txt
+- val.txt
+  
+2) Option 2: 2 datasets
+  
+  This option is the best one so far. Both datasets (*esmat_context* and *esmart_wip*) need to be formatted as described in Option #1 just above.
+
+  
+### Command examples
+To train the classification, use the parameter *--only_cls*. Example:
 ```bash
 # Single-GPU
-python multitasks/train.py --epochs 20 --img 224 --weights yolov5s-cls.pt --cfg models/yolov5s_mlt.yaml --data ../datasets/data_road_cond_seq_split_2_test/data.yaml --only_cls --batch-size 32
+python multitasks/train.py --epochs 20 --img 224 --weights yolov5s-cls.pt 
+                           --cfg models/yolov5s_mlt.yaml --data ../datasets/data_road_cond_seq_split_2_test/data.yaml 
+                           --only_cls --batch-size 32
 ```
-Training the detection:
+To train the detection, use the parameter *--only_det*. Example:
 ```bash
 # Single-GPU
-python multitasks/train.py --epochs 20 --img 224 --weights yolov5s-cls.pt --cfg models/yolov5s_mlt.yaml --data ... --only_det --batch-size 32
+python multitasks/train.py --epochs 20 --img 224 --weights yolov5s-cls.pt 
+                           --cfg models/yolov5s_mlt.yaml --data ../datasets/esmart_wip/data.yaml --only_det 
+                           --batch-size 32
 ```
-Training both tasks:
+To train on both tasks, don't use any specific parameters but keep in mind to scale the cls loss in the hyperparameters file. Example:
 ```bash
 # Single-GPU
-python multitasks/train.py --epochs 20 --img 224 --weights yolov5s-cls.pt --cfg models/yolov5s_mlt.yaml --data ... --batch-size 32
+python multitasks/train.py --epochs 20 --img 224 --weights yolov5s.pt 
+                           --cfg models/yolov5s_mlt.yaml --data ../datasets/hybrid/data.yaml --batch-size 32
 ```
-The data should be in the following format:
-* data.yaml
-* train/
-    * images/
-        * .jpg
-    * labels/
-        * .txt (detection annotations, vanilla yolo format)
-* train_cls.csv
-    * | filename | road_condition |
-    * |  example.jpg  |        1       |    (0=dry, 1=snowy, 2= wet)
-* val/
-    * images/
-        * .jpg
-    * labels/
-        * .txt (detection annotations, vanilla yolo format)
-* val_cls.csv
-    * | filename | road_condition |
-    * |  example.jpg  |        1       |    (0=dry, 1=snowy, 2= wet)
+  -----------
+### Proposed recipe for multitasks training 
+Here is the **proposed recipe** to reach good results on both tasks (training each task separately on their respective dataset):
+
+#### Training 
+  
+1. The detection:
+[See Run](https://wandb.ai/esmart/YOLOv5/runs/17ol1gly?workspace=user-selimgilon)
+```bash
+!python multitasks/train.py --epochs 50 --img 512 --weights yolov5s.pt 
+                            --data ../datasets/esmart_wip/data.yaml 
+                            --batch-size 32 --only_det
+```
+  
+2. The classification 
+[See Run](https://wandb.ai/esmart/YOLOv5/runs/ilovlhdf?workspace=user-selimgilon)
+```bash
+!python multitasks/train.py --epochs 50 --img 512 --weights {LAST_WEIGHTS} --data ../datasets/esmart_context/data.yaml 
+                            --batch-size 32 --only_cls --freeze_all_but 8 25 --cut_img 0.5
+```
+  
+3. The detection
+You can optionnally retrain on the detection.
+```bash
+!python multitasks/train.py --epochs 10 --img 512 --weights {LAST_WEIGHTS} --data ../datasets/esmart_wip/data.yaml 
+                            --batch-size 32 --only_det --freeze 0 1 2 3 4 5 6 7 8 25
+```
+#### Evaluation
+The road conditions classification on esmart_context:
+```bash
+!python multitasks/val.py --img 512 --weights {WEIGHTS} --data ../datasets/esmart_context/data.yaml  
+                          --batch-size 32 --only_cls_eval --temperature 3
+```
+The detections on esmart_wip:
+```bash
+!python multitasks/val.py --img 512 --weights {WEIGHTS} --data ../datasets/esmart_wip/data.yaml 
+                          --batch-size 32 --only_det_eval
+```
+  
+
+### Export the model 
+```bash
+!python export.py --weights runs/train-mlt/exp162/weights/last.pt --include onnx
+```
 
 
 ## <div align="center">Environments</div>
