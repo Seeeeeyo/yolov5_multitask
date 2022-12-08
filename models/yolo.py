@@ -121,12 +121,18 @@ class BaseModel(nn.Module):
         # placeholder for the gradients
         self.gradients = None
 
+# Work In progress for gradient heatmaps
+    # method for the gradient extraction
+    #def get_activations_gradient(self):
+    #    return self.gradients
 
-    def activations_hook(self, grad):
-        self.gradients = grad
+    # method for the activation exctraction
+    #def get_activations(self, x):
+    #    return self.features_conv(x)
 
-    def activations_hook(self, grad):
-        self.gradients = grad
+    #def activations_hook(self, grad):
+    #    self.gradients = grad
+
     def forward(self, x, profile=False, visualize=False):
         return self._forward_once(x, profile, visualize)  # single-scale inference, train
 
@@ -139,6 +145,8 @@ class BaseModel(nn.Module):
                 self._profile_one_layer(m, x, dt)
 
             x = m(x)  # run
+
+            # Work in progress
             # save the gradients of each layer from 0 to 8 and 25
             # check if it requires a gradient
             #if m.requires_grad_():
@@ -149,7 +157,6 @@ class BaseModel(nn.Module):
             if visualize:
                 feature_visualization(x, m.type, m.i, save_dir=visualize)
             # The classification head has to be the second to last layer
-            # TODO change it so that it is not hardcoded
             if m.i == self.model[25].i:  # classification head
                 pred_cls = x
             # The detection head has to be the last layer
@@ -385,27 +392,13 @@ class HybridModel(BaseModel):
         LOGGER.info('')
 
 
-    # hook for the gradients of the activations
-    def activations_hook(self, grad):
-        self.gradients = grad
-
     def forward(self, x, augment=False, profile=False, visualize=False):
-        # TODO, deal with augment case in the future
-
         if augment:
             return self._forward_augment(x)  # augmented inference, None
         det_test, cls_test = self._forward_once(
             x, profile, visualize
         )  # single-scale inference, train
         return det_test, cls_test
-
-    # method for the gradient extraction
-    def get_activations_gradient(self):
-        return self.gradients
-
-    # method for the activation exctraction
-    def get_activations(self, x):
-        return self.features_conv(x)
 
     def _forward_augment(self, x):
         img_size = x.shape[-2:]  # height, width
