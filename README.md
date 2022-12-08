@@ -155,7 +155,7 @@ python train.py --data coco.yaml --epochs 300 --weights '' --cfg yolov5n.yaml  -
 - [ClearML Logging](https://github.com/ultralytics/yolov5/tree/master/utils/loggers/clearml) 🌟 NEW
 - [Deci Platform](https://github.com/ultralytics/yolov5/wiki/Deci-Platform) 🌟 NEW
 - [Comet Logging](https://github.com/ultralytics/yolov5/tree/master/utils/loggers/comet) 🌟 NEW
-- [Yolov5s Multitasks Training and Evaluation](https://github.com/Seeeeeyo/yolov5_multitask/blob/6.2_mulittask/yolo-mlt-train%26evaluate.ipynb)
+- [Yolov5s Multitasks Training and Evaluation](https://github.com/Seeeeeyo/yolov5_multitask/blob/6.2_mulittask/yolo-mlt-train%26evaluate.ipynb) 🌟 NEW-ESMART
 
 </details>
 
