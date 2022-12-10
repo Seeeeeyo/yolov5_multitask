@@ -369,7 +369,7 @@ class HybridModel(BaseModel):
         # placeholder for the gradients
         self.gradients = None
         # disect the network to access its last convolutional layer
-        self.features_conv = self.model[:9].append(self.model[25])
+        #self.features_conv = self.model[:9].append(self.model[25])
 
         # Build strides, anchors
         m = self.model[-2]  # Detect()

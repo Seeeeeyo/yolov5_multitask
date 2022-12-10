@@ -210,6 +210,7 @@ def run(
         names = dict(enumerate(names))
     if isinstance(names_cls, (list, tuple)):  # old format
         names_cls = dict(enumerate(names_cls))
+    is_coco = False
     class_map = coco80_to_coco91_class() if is_coco else list(range(1000))
 
     if only_det_eval:
@@ -286,49 +287,51 @@ def run(
                                             max_det=max_det)
 
             # filter on the images to check for the detections
-            #img_to_be_checked_idx = torch.where(det_to_check == 1)[0].to(device)
+            img_to_be_checked_idx = torch.where(det_to_check == 1)[0].to(device)
             #preds = [preds[i] for i in img_to_be_checked_idx]
 
             # Metrics
             # si is the index of the image in the batch and pred is the prediction for that image
             for si, pred in enumerate(preds):
-                # labels is the ground truth for that image using the si index
-                labels = targets[targets[:, 0] == si, 1:]
-                nl, npr = labels.shape[0], pred.shape[0]  # number of labels, predictions
-                path, shape = Path(paths[si]), shapes[si][0]
-                correct = torch.zeros(npr, niou, dtype=torch.bool, device=device)  # init
-                seen += 1
+                if si in img_to_be_checked_idx:
+                    # labels is the ground truth for that image using the si index
+                    labels = targets[targets[:, 0] == si, 1:]
+                    nl, npr = labels.shape[0], pred.shape[0]  # number of labels, predictions
+                    path, shape = Path(paths[si]), shapes[si][0]
+                    correct = torch.zeros(npr, niou, dtype=torch.bool, device=device)  # init
+                    seen += 1
 
-                if npr == 0:
+                    # if the number o
+                    if npr == 0:
+                        if nl:
+                            stats.append((correct, *torch.zeros((2, 0), device=device), labels[:, 0]))
+                            if plots:
+                                confusion_matrix.process_batch(detections=None, labels=labels[:, 0])
+                        continue
+
+                    # Predictions
+                    if single_cls:
+                        pred[:, 5] = 0
+                    predn = pred.clone()
+                    scale_boxes(im[si].shape[1:], predn[:, :4], shape, shapes[si][1])  # native-space pred
+
+                    # Evaluate
+                    # if there is a label for the image
                     if nl:
-                        stats.append((correct, *torch.zeros((2, 0), device=device), labels[:, 0]))
+                        tbox = xywh2xyxy(labels[:, 1:5])  # target boxes
+                        scale_boxes(im[si].shape[1:], tbox, shape, shapes[si][1])  # native-space labels
+                        labelsn = torch.cat((labels[:, 0:1], tbox), 1)  # native-space labels
+                        correct = process_batch(predn, labelsn, iouv)
                         if plots:
-                            confusion_matrix.process_batch(detections=None, labels=labels[:, 0])
-                    continue
+                            confusion_matrix.process_batch(predn, labelsn)
+                    stats.append((correct, pred[:, 4], pred[:, 5], labels[:, 0]))  # (correct, conf, pcls, tcls)
 
-                # Predictions
-                if single_cls:
-                    pred[:, 5] = 0
-                predn = pred.clone()
-                scale_boxes(im[si].shape[1:], predn[:, :4], shape, shapes[si][1])  # native-space pred
-
-                # Evaluate
-                # if there is a label for the image
-                if nl:
-                    tbox = xywh2xyxy(labels[:, 1:5])  # target boxes
-                    scale_boxes(im[si].shape[1:], tbox, shape, shapes[si][1])  # native-space labels
-                    labelsn = torch.cat((labels[:, 0:1], tbox), 1)  # native-space labels
-                    correct = process_batch(predn, labelsn, iouv)
-                    if plots:
-                        confusion_matrix.process_batch(predn, labelsn)
-                stats.append((correct, pred[:, 4], pred[:, 5], labels[:, 0]))  # (correct, conf, pcls, tcls)
-
-                # Save/log
-                if save_txt:
-                    save_one_txt(predn, save_conf, shape, file=save_dir / 'labels' / f'{path.stem}.txt')
-                if save_json:
-                    save_one_json(predn, jdict, path, class_map)  # append to COCO-JSON dictionary
-                callbacks.run('on_val_image_end', pred, predn, path, names, im[si])
+                    # Save/log
+                    if save_txt:
+                        save_one_txt(predn, save_conf, shape, file=save_dir / 'labels' / f'{path.stem}.txt')
+                    if save_json:
+                        save_one_json(predn, jdict, path, class_map)  # append to COCO-JSON dictionary
+                    callbacks.run('on_val_image_end', pred, predn, path, names, im[si])
 
             # Plot images
             if plots and batch_i < 3:

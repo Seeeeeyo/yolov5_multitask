@@ -206,7 +206,6 @@ class ComputeLoss:
         lobj *= self.hyp['obj']
         lcls *= self.hyp['cls']
         lcls_cls *= self.hyp['cls_road_cond']
-        # bs = tobj.shape[0]
         bs = sum(det_to_check)
 
         return (lbox + lobj + lcls) * bs, lcls_cls, torch.cat((lbox, lobj, lcls)).detach(), lcls_cls.detach()

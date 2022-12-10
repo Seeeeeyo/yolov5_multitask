@@ -409,9 +409,9 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 #gradients = model.get_activations_gradient()
                 # pool the gradients across the channels
                 #gradients = gradients[0,...].unsqueeze(dim=0)
-                pooled_gradients = torch.mean(gradients, dim=[0, 2, 3])
+                #pooled_gradients = torch.mean(gradients, dim=[0, 2, 3])
                 # get the activations of the last convolutional layer
-                activations = model.get_activations(imgs.float()).detach()
+                #activations = model.get_activations(imgs.float()).detach()
 
                 # if (i+1) != nb:  # if not the last batch
                 #     # print(i)
@@ -486,7 +486,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                     return
             # end batch ------------------------------------------------------------------------------------------------
 
-        # Scheduler
+        # Scheduler TODO adapt the scheduler to the different head
         lr = [x['lr'] for x in optimizer.param_groups]  # for loggers
         scheduler.step()
 

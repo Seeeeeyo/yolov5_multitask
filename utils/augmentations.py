@@ -29,16 +29,24 @@ class Albumentations:
             import albumentations as A
             check_version(A.__version__, '1.0.3', hard=True)  # version requirement
             T = [
-                A.RandomResizedCrop(height=size, width=size, scale=(0.6, 1.0), ratio=(0.7, 1.11), p=1),
-                A.HorizontalFlip(p=0.2),
-                #A.VerticalFlip(p=0.2),
-                A.Blur(p=0.2),
+                A.RandomResizedCrop(height=size, width=size, scale=(0.4, 1.11), ratio=(0.4, 1.11), p=1),
+                #A.BBoxSafeRandomCrop(erosion_rate=0.5, height=size, width=size, p=1),
+                #A.CenterCrop(height=size, width=size, p=1),
+                A.HorizontalFlip(p=0.3),
+                A.VerticalFlip(p=0.1),
+                A.Blur(p=0.3),
                 # A.MedianBlur(p=0.01),
                 A.ToGray(p=0.1),
-                A.ColorJitter(*((float(0.4),)*3), 0),
+                A.ColorJitter(*((float(0.4),)*3), p=0.1),
                 A.CLAHE(p=0.2),
-                A.RandomBrightnessContrast(p=0.2),
-                A.RandomGamma(p=0.2),
+                A.RandomBrightnessContrast(p=0.1),
+                A.RandomGamma(p=0.1),
+                A.RandomShadow(num_shadows_lower=1, num_shadows_upper=2, p=0.05),
+                A.RandomFog(fog_coef_lower=0.1, fog_coef_upper=0.3, p=0.1),
+                A.RandomSnow(snow_point_lower=0.1, snow_point_upper=0.3, p=0.05),
+                A.RandomRain(p=0.05),
+                A.RandomSunFlare(p=0.05),
+                A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.2, rotate_limit=45, p=0.1),
                 A.ImageCompression(quality_lower=75, p=0.2),
                 ]  # transforms
             self.transform = A.Compose(T, bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels']))
@@ -53,12 +61,15 @@ class Albumentations:
     def __call__(self, im, labels, p=1.0):
         if self.transform and random.random() < p:
             labels[:, 1:] = np.clip(labels[:, 1:], 0, 1)
-            #if labels[:, 1:].max() > 1 or labels[:, 1:].min() < 0:
-            #    print(labels)
-            #    print(im)
+
             # keep the bottom part of the image
             if random.random() < self.cut_img:
-                im = im[int(im.shape[0] * 0.5):, int(im.shape[1] * 0.1):int(im.shape[1] * 0.9):, :]
+                h, w, c = im.shape
+                h_cut = int(h * random.uniform(0.2, 0.6))
+                rnd = random.uniform(0.05, 0.3)
+                w_cut = int(w * rnd)
+                w_cut_end = int(w * (1-rnd))
+                im = im[h_cut:, w_cut:w_cut_end, :]
             new = self.transform(image=im, bboxes=labels[:, 1:], class_labels=labels[:, 0])  # transformed
             im, labels = new['image'], np.array([[c, *b] for c, b in zip(new['class_labels'], new['bboxes'])])
         return im, labels
