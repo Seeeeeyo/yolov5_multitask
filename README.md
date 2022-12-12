@@ -405,8 +405,12 @@ Both the detections and classifications on esmart_hybrid:
 !python multitasks/val.py --img 512 --weights {WEIGHTS} --data ../datasets/hybrid/data.yaml 
                           --batch-size 32 
 ```
-  
-
+  -----------
+### Inference
+```bash
+!python multitasks/detect.py --weights {WEIGHTS} --source {VIDEO} --img 512
+```
+    -----------
 ### Export the model 
 ```bash
 !python export.py --weights {WEIGHTS} --include onnx
