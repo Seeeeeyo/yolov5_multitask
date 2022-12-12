@@ -10,6 +10,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import seaborn as sn
 
 from utils import TryExcept, threaded
 
@@ -219,7 +220,6 @@ class ConfusionMatrix:
 
     @TryExcept('WARNING ⚠️ ConfusionMatrix plot failure')
     def plot(self, normalize=True, save_dir='', names=()):
-        import seaborn as sn
 
         array = self.matrix / ((self.matrix.sum(0).reshape(1, -1) + 1E-9) if normalize else 1)  # normalize columns
         array[array < 0.005] = np.nan  # don't annotate (would appear as 0.00)
@@ -251,6 +251,59 @@ class ConfusionMatrix:
     def print(self):
         for i in range(self.nc + 1):
             print(' '.join(map(str, self.matrix[i])))
+
+class ConfusionMatrixClassification:
+    def __init__(self, nc, conf=0.25):
+        self.matrix = np.zeros((nc, nc))  # confusion matrix for the complete epoch
+        self.nc = nc  # number of classes
+        self.conf = conf
+        # self.class_names = class_names
+    def get_matrix(self):
+        return self.matrix
+
+    def compute(self, groundtruth, predictions):
+        from sklearn.metrics import confusion_matrix
+
+        cm = confusion_matrix(groundtruth, predictions, normalize=None, labels=list(range(self.nc)))
+        self.matrix += cm
+
+    def plot(self, normalize=True, save_dir="", names=()):
+        try:
+            fig = plt.figure(figsize=(12, 9), tight_layout=True)
+            nc, nn = self.nc, len(names)  # number of classes, number of names
+            assert nc == nn
+            sn.set(font_scale=1.0 if nc < 50 else 0.8)  # for label size
+            labels = (0 < nn < 99) and (nn == nc)  # apply names to ticklabels
+            if normalize:
+                row_sums = self.matrix.sum(axis=1)
+                norm_matrix = self.matrix / row_sums[:, np.newaxis]
+
+
+            with warnings.catch_warnings():
+                warnings.simplefilter(
+                    "ignore"
+                )  # suppress empty matrix RuntimeWarning: All-NaN slice encountered
+                sn.heatmap(
+                    norm_matrix,
+                    annot=True,
+                    # annot_kws={"size": 8},
+                    cmap="Blues",
+                    fmt="0.2%",
+                    square=True,
+                    vmin=0,
+                    xticklabels=names,
+                    yticklabels=names,
+                ).set_facecolor((1, 1, 1))
+            fig.axes[0].set_xlabel("Predicted")
+            fig.axes[0].set_ylabel("Ground truth")
+            fig.savefig(Path(save_dir) / "confusion_matrix_cls.png", dpi=250)
+            plt.close()
+        except Exception as e:
+            print(f"WARNING: ConfusionMatrix plot failure: {e}")
+
+    def print(self):
+        for i in range(self.nc + 1):
+            print(" ".join(map(str, self.matrix[i])))
 
 
 def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, eps=1e-7):
