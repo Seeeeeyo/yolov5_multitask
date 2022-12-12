@@ -145,27 +145,6 @@ def run(
         cls_pred = cls_pred / temperature  # temperature scaling
         prob = F.softmax(cls_pred, dim=1).squeeze()  # probabilities
 
-        # get the gradient of the output with respect to the parameters of the model
-        #pred[.....].backward()
-        # pull the gradients out of the model
-        #gradients = model.get_activations_gradient()
-        # pool the gradients across the channels
-        #pooled_gradients = torch.mean(gradients, dim=[0, 2, 3])
-        # get the activations of the last convolutional layer
-        #activations = model.get_activations(im.float()).detach()
-        # weight the channels by corresponding gradients
-        #for i in range(512):
-        #    activations[:, i, :, :] *= pooled_gradients[i]
-        # average the channels of the activations
-        #heatmap = torch.mean(activations, dim=1).squeeze()
-        # relu on top of the heatmap
-        # expression (2) in https://arxiv.org/pdf/1610.02391.pdf
-        #heatmap = np.maximum(heatmap, 0)
-        # normalize the heatmap
-        #heatmap /= torch.max(heatmap)
-        # draw the heatmap
-        #plt.matshow(heatmap.squeeze())
-
         # Process detections
         for i, det in enumerate(pred):  # per image
             seen += 1
