@@ -384,11 +384,11 @@ See [Run Det](https://wandb.ai/esmart/YOLOv5/runs/17ol1gly?workspace=user-selimg
                             --cut_img 0.5
 ```
 
-- To train on both tasks simultaneously (**best recipe** -- [See Run](https://wandb.ai/esmart/YOLOv5/runs/9nc7c4jp?workspace=user-selimgilon)) with the hybrid dataset, don't use any specific parameters but keep in mind to scale the cls loss (cls_road_cond) in the hyperparameters file:
+- To train on both tasks simultaneously (**best recipe** -- [See Run](https://wandb.ai/esmart/YOLOv5/runs/2l8o64og?workspace=user-selimgilon)) with the hybrid dataset, don't use any specific parameters but keep in mind to scale the cls loss (cls_road_cond) in the hyperparameters file:
 
 ```bash
 # Single-GPU
-python multitasks/train.py --epochs 20 --img 224 --weights yolov5s.pt 
+python multitasks/train.py --epochs 100 --img 512 --weights yolov5s.pt 
                            --cfg models/yolov5s_mlt.yaml 
                            --data ../datasets/hybrid/data.yaml 
                            --batch-size 32
