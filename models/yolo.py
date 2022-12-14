@@ -118,20 +118,6 @@ class BaseModel(nn.Module):
     # YOLOv5 base model
     def __init__(self):  # ch, nc are model.yaml anchors and class number
         super().__init__()
-        # placeholder for the gradients
-        self.gradients = None
-
-# Work In progress for gradient heatmaps
-    # method for the gradient extraction
-    #def get_activations_gradient(self):
-    #    return self.gradients
-
-    # method for the activation exctraction
-    #def get_activations(self, x):
-    #    return self.features_conv(x)
-
-    #def activations_hook(self, grad):
-    #    self.gradients = grad
 
     def forward(self, x, profile=False, visualize=False):
         return self._forward_once(x, profile, visualize)  # single-scale inference, train
@@ -143,16 +129,7 @@ class BaseModel(nn.Module):
                 x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
             if profile:
                 self._profile_one_layer(m, x, dt)
-
             x = m(x)  # run
-
-            # Work in progress
-            # save the gradients of each layer from 0 to 8 and 25
-            # check if it requires a gradient
-            #if m.requires_grad_():
-            #    if m.i <= 8 or m.i == 25:
-            #        h = x.register_hook(self.activations_hook)
-
             y.append(x if m.i in self.save else None)  # save output
             if visualize:
                 feature_visualization(x, m.type, m.i, save_dir=visualize)
@@ -366,10 +343,6 @@ class HybridModel(BaseModel):
         self.names = [str(i) for i in range(self.yaml['nc'])]  # default names
         self.names_cls = [str(i) for i in range(self.yaml["nc_cls"])]  # default cls names
         self.inplace = self.yaml.get('inplace', True)
-        # placeholder for the gradients
-        self.gradients = None
-        # disect the network to access its last convolutional layer
-        #self.features_conv = self.model[:9].append(self.model[25])
 
         # Build strides, anchors
         m = self.model[-2]  # Detect()
