@@ -341,7 +341,7 @@ You can pull the hybrid dataset from its S3 bucket or reconstruct it with any da
 - train_cls.csv
 - val_cls.csv
   - | filename | road_condition | detect
-  - | example.jpg | (0=dry, 1=snowy, 2=wet) | 1 if use this img for detection (if from esmart_wip) 0 otherwise (no detrection label)
+  - | example.jpg | (0=dry, 1=snowy, 2=wet) | 1 if use this img for detection (if from esmart_wip) 0 otherwise (no detection label)
 
 - train.txt
 - val.txt
