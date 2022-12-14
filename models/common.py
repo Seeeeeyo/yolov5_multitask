@@ -332,6 +332,11 @@ class DetectMultiBackend(nn.Module):
         from models.experimental import attempt_download, attempt_load  # scoped to avoid circular import
 
         super().__init__()
+
+        self.features_conv = None
+        # placeholder for the gradients
+        self.gradients = None
+
         w = str(weights[0] if isinstance(weights, list) else weights)
         pt, jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, paddle, triton = self._model_type(w)
         fp16 &= pt or jit or onnx or engine  # FP16
@@ -343,10 +348,13 @@ class DetectMultiBackend(nn.Module):
 
         if pt:  # PyTorch
             model = attempt_load(weights if isinstance(weights, list) else w, device=device, inplace=True, fuse=fuse)
+            for k, v in model.named_parameters():
+                v.requires_grad = True  # train all layers
             stride = max(int(model.stride.max()), 32)  # model stride
             names = model.module.names if hasattr(model, 'module') else model.names  # get class names
             model.half() if fp16 else model.float()
             self.model = model  # explicitly assign for to(), cpu(), cuda(), half()
+
         elif jit:  # TorchScript
             LOGGER.info(f'Loading {w} for TorchScript inference...')
             extra_files = {'config.txt': ''}  # model metadata
