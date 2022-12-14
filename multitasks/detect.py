@@ -78,7 +78,7 @@ def run(
         dnn=False,  # use OpenCV DNN for ONNX inference
         vid_stride=1,  # video frame-rate stride
         wdw_fix=400,  # window size for moving average
-        confidence=0.8,  # confidence threshold
+        confidence=0.75,  # confidence threshold
         temperature=1,  # temperature scaling
 ):
     source = str(source)
@@ -120,6 +120,7 @@ def run(
     # Run inference
     model.warmup(imgsz=(1 if pt or model.triton else bs, 3, *imgsz))  # warmup
     seen, windows, dt = 0, [], (Profile(), Profile(), Profile())
+
     for path, im, im0s, vid_cap, s in dataset:
         with dt[0]:
             im = torch.from_numpy(im).to(model.device)
@@ -144,27 +145,6 @@ def run(
         # Process classifications
         cls_pred = cls_pred / temperature  # temperature scaling
         prob = F.softmax(cls_pred, dim=1).squeeze()  # probabilities
-
-        # get the gradient of the output with respect to the parameters of the model
-        #pred[.....].backward()
-        # pull the gradients out of the model
-        #gradients = model.get_activations_gradient()
-        # pool the gradients across the channels
-        #pooled_gradients = torch.mean(gradients, dim=[0, 2, 3])
-        # get the activations of the last convolutional layer
-        #activations = model.get_activations(im.float()).detach()
-        # weight the channels by corresponding gradients
-        #for i in range(512):
-        #    activations[:, i, :, :] *= pooled_gradients[i]
-        # average the channels of the activations
-        #heatmap = torch.mean(activations, dim=1).squeeze()
-        # relu on top of the heatmap
-        # expression (2) in https://arxiv.org/pdf/1610.02391.pdf
-        #heatmap = np.maximum(heatmap, 0)
-        # normalize the heatmap
-        #heatmap /= torch.max(heatmap)
-        # draw the heatmap
-        #plt.matshow(heatmap.squeeze())
 
         # Process detections
         for i, det in enumerate(pred):  # per image
@@ -229,7 +209,7 @@ def run(
 
             if save_img or save_crop or view_img:  # Add bbox to image
                 annotator.text((32, 32), text, txt_color=(44, 105, 236))
-                annotator.text((32, 220), avg_text, txt_color=(44, 105, 236))
+                annotator.text_cls((32, 220), avg_text, txt_color=(44, 105, 236))
 
             if len(det):
                 # Rescale boxes from img_size to im0 size
@@ -331,7 +311,7 @@ def parse_opt():
     parser.add_argument('--half', action='store_true', help='use FP16 half-precision inference')
     parser.add_argument('--dnn', action='store_true', help='use OpenCV DNN for ONNX inference')
     parser.add_argument('--vid-stride', type=int, default=1, help='video frame-rate stride')
-    parser.add_argument('--wdw_fix', type=int, default=200, help='window size for moving average (video only)')
+    parser.add_argument('--wdw_fix', type=int, default=400, help='window size for moving average (video only)')
     parser.add_argument('--confidence', type=float, default=0.75, help='confidence threshold')
     parser.add_argument('--temperature', type=float, default=1, help='temperature to apply to logits')
     opt = parser.parse_args()
