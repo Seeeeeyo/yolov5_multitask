@@ -401,27 +401,6 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             with torch.cuda.amp.autocast(amp):
                 preds = model(imgs)  # forward
                 det_pred, cls_pred = preds[0], preds[1]
-                # Work In progress for gradient heatmaps
-                #sorted = cls_pred.argsort()[0]
-                #amx = cls_pred.argmax(dim=1)[0]
-                #cls_pred[0][amx.item()].backward()
-                # pull the gradients out of the model
-                #gradients = model.get_activations_gradient()
-                # pool the gradients across the channels
-                #gradients = gradients[0,...].unsqueeze(dim=0)
-                #pooled_gradients = torch.mean(gradients, dim=[0, 2, 3])
-                # get the activations of the last convolutional layer
-                #activations = model.get_activations(imgs.float()).detach()
-
-                # if (i+1) != nb:  # if not the last batch
-                #     # print(i)
-                #     # print(pred[1].shape)
-                #     assert cls_pred.shape == (batch_size, nc_cls_road_cond)
-                #     assert targets_cls.shape == (batch_size,)
-                # else:
-                #     assert cls_pred.shape[1] == nc_cls_road_cond
-                # assert targets.shape[1] == 6
-
                 # loss scaled by batch_size
                 loss, cls_loss, loss_items, cls_loss_item = compute_loss(preds,
                                                                          targets.to(device), targets_cls.to(device),
