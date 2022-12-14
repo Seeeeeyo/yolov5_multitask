@@ -502,6 +502,7 @@ class LoadImagesAndLabels(Dataset):
                                                                  == os.path.basename(x)]['road_condition'].values[0] for x in self.im_files]
         self.detection_to_check = [self.cls_labels_df.loc[self.cls_labels_df['filename']
                                                                  == os.path.basename(x)]['detect'].values[0] for x in self.im_files]
+        self.detection_to_check = [int(x) for x in self.detection_to_check]
         self.cls_labels_road_cond = list(self.cls_labels_road_cond)
         self.detection_to_check = list(self.detection_to_check)
         # Check cache
