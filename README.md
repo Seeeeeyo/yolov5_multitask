@@ -155,7 +155,7 @@ python train.py --data coco.yaml --epochs 300 --weights '' --cfg yolov5n.yaml  -
 - [ClearML Logging](https://github.com/ultralytics/yolov5/tree/master/utils/loggers/clearml) 🌟 NEW
 - [Deci Platform](https://github.com/ultralytics/yolov5/wiki/Deci-Platform) 🌟 NEW
 - [Comet Logging](https://github.com/ultralytics/yolov5/tree/master/utils/loggers/comet) 🌟 NEW
-- [Yolov5s Multitasks Training and Evaluation](https://github.com/Seeeeeyo/yolov5_multitask/blob/6.2_mulittask/yolo-mlt-train%26evaluate.ipynb) 🌟 NEW-ESMART
+- [Yolov5s Multitasks Training and Evaluation](https://github.com/Seeeeeyo/yolov5_multitask/blob/6.2_mulittask/yolo-mlt-train%26evaluate.ipynb) 🌟 NEW
 
 </details>
 
@@ -341,7 +341,7 @@ You can pull the hybrid dataset from its S3 bucket or reconstruct it with any da
 - train_cls.csv
 - val_cls.csv
   - | filename | road_condition | detect
-  - | example.jpg | (0=dry, 1=snowy, 2=wet) | 1 if use this img for detection (if from esmart_wip) 0 otherwise (no detrection label)
+  - | example.jpg | (0=dry, 1=snowy, 2=wet) | 1 if use this img for detection (if from esmart_wip) 0 otherwise (no detection label)
 
 - train.txt
 - val.txt
@@ -356,14 +356,16 @@ You can pull the hybrid dataset from its S3 bucket or reconstruct it with any da
 ```bash
 # Single-GPU
 python multitasks/train.py --epochs 20 --img 224 --weights yolov5s-cls.pt 
-                           --cfg models/yolov5s_mlt.yaml --data ../datasets/data_road_cond_seq_split_2_test/data.yaml 
+                           --cfg models/yolov5s_mlt.yaml 
+                           --data ../datasets/data_road_cond_seq_split_2_test/data.yaml 
                            --only_cls --batch-size 32
 ```
 - To train the detection, use the parameter *--only_det*. Example:
 ```bash
 # Single-GPU
 python multitasks/train.py --epochs 20 --img 224 --weights yolov5s-cls.pt 
-                           --cfg models/yolov5s_mlt.yaml --data ../datasets/esmart_wip/data.yaml --only_det 
+                           --cfg models/yolov5s_mlt.yaml 
+                           --data ../datasets/esmart_wip/data.yaml --only_det 
                            --batch-size 32
 ```
 
@@ -376,33 +378,40 @@ See [Run Det](https://wandb.ai/esmart/YOLOv5/runs/17ol1gly?workspace=user-selimg
                             --data ../datasets/esmart_wip/data.yaml 
                             --batch-size 32 --only_det
 # The classification 
-!python multitasks/train.py --epochs 50 --img 512 --weights {LAST_WEIGHTS} --data ../datasets/esmart_context/data.yaml 
-                            --batch-size 32 --only_cls --freeze_all_but 8 25 --cut_img 0.5
+!python multitasks/train.py --epochs 50 --img 512 --weights {LAST_WEIGHTS} 
+                            --data ../datasets/esmart_context/data.yaml 
+                            --batch-size 32 --only_cls --freeze_all_but 8 25 
+                            --cut_img 0.5
 ```
 
-- To train on both tasks simultaneously (**best recipe** -- [See Run](https://wandb.ai/esmart/YOLOv5/runs/9nc7c4jp?workspace=user-selimgilon)) with the hybrid dataset, don't use any specific parameters but keep in mind to scale the cls loss (cls_road_cond) in the hyperparameters file:
+- To train on both tasks simultaneously (**best recipe** -- [See Run](https://wandb.ai/esmart/YOLOv5/runs/2l8o64og?workspace=user-selimgilon)) with the hybrid dataset, don't use any specific parameters but keep in mind to scale the cls loss (cls_road_cond) in the hyperparameters file:
 
 ```bash
 # Single-GPU
-python multitasks/train.py --epochs 20 --img 224 --weights yolov5s.pt 
-                           --cfg models/yolov5s_mlt.yaml --data ../datasets/hybrid/data.yaml --batch-size 32
+python multitasks/train.py --epochs 100 --img 512 --weights yolov5s.pt 
+                           --cfg models/yolov5s_mlt.yaml 
+                           --data ../datasets/hybrid/data.yaml 
+                           --batch-size 32
 ```
 
   -----------
 ### Evaluation
 The road conditions classification on esmart_context:
 ```bash
-!python multitasks/val.py --img 512 --weights {WEIGHTS} --data ../datasets/esmart_context/data.yaml  
+!python multitasks/val.py --img 512 --weights {WEIGHTS} 
+                          --data ../datasets/esmart_context/data.yaml  
                           --batch-size 32 --only_cls_eval --temperature 3
 ```
 The detections on esmart_wip:
 ```bash
-!python multitasks/val.py --img 512 --weights {WEIGHTS} --data ../datasets/esmart_wip/data.yaml 
+!python multitasks/val.py --img 512 --weights {WEIGHTS} 
+                          --data ../datasets/esmart_wip/data.yaml 
                           --batch-size 32 --only_det_eval
 ```
 Both the detections and classifications on esmart_hybrid:
 ```bash
-!python multitasks/val.py --img 512 --weights {WEIGHTS} --data ../datasets/hybrid/data.yaml 
+!python multitasks/val.py --img 512 --weights {WEIGHTS} 
+                          --data ../datasets/hybrid/data.yaml 
                           --batch-size 32 
 ```
   -----------

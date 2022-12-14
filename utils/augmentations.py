@@ -79,7 +79,6 @@ def normalize(x, mean=IMAGENET_MEAN, std=IMAGENET_STD, inplace=False):
     # Denormalize RGB images x per ImageNet stats in BCHW format, i.e. = (x - mean) / std
     return TF.normalize(x, mean, std, inplace=inplace)
 
-
 def denormalize(x, mean=IMAGENET_MEAN, std=IMAGENET_STD):
     # Denormalize RGB images x per ImageNet stats in BCHW format, i.e. = x * std + mean
     for i in range(3):

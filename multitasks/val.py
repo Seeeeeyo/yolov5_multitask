@@ -44,7 +44,7 @@ from utils.dataloaders import create_dataloader
 from utils.general import (LOGGER, Profile, check_dataset, check_img_size, check_requirements, check_yaml,
                            coco80_to_coco91_class, colorstr, increment_path, non_max_suppression, print_args,
                            scale_boxes, xywh2xyxy, xyxy2xywh)
-from utils.metrics import ConfusionMatrix, ap_per_class, box_iou, scores_cls
+from utils.metrics import ConfusionMatrix, ConfusionMatrixClassification, ap_per_class, box_iou, scores_cls
 from utils.plots import output_to_target, plot_images, plot_val_study
 from utils.torch_utils import select_device, smart_inference_mode
 from utils.plots import imshow_cls
@@ -202,7 +202,7 @@ def run(
 
     seen = 0
     confusion_matrix = ConfusionMatrix(nc=nc)
-    confusion_matrix_cls = ConfusionMatrix(nc=nc_cls)
+    confusion_matrix_cls = ConfusionMatrixClassification(nc=nc_cls)
     names = model.names if hasattr(model, 'names') else model.module.names  # get class names
     # names_cls = model.names_cls if hasattr(model, 'names_cls') else model.module.names_cls  # get class names
     names_cls = data["names_cls_road_cond"]
@@ -367,8 +367,7 @@ def run(
 
     # Compute classification metrics
     acc_cls = round(sum(acc_cls_ep) / len(acc_cls_ep), 3)
-    # TODO compute the confusion matrix
-    #confusion_matrix_cls.compute(stats_cls['label'], stats_cls['pred'])
+    confusion_matrix_cls.compute(stats_cls['label'], stats_cls['pred'])
     scores_per_class, scores_macro = scores_cls(stats_cls['pred'], stats_cls['label'])
     pr_cls, recall_cls, fpr_cls, f1_cls, support = scores_macro
     pr_per_class, recall_per_class, fpr_per_class, fscore_per_class, support_per_class = scores_per_class
