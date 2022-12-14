@@ -171,6 +171,13 @@ class Annotator:
             xy[1] += 1 - h
         self.draw.text(xy, text, fill=txt_color, font=self.font)
 
+    def text_cls(self, xy, text, txt_color=(255, 255, 255)):
+        w, h = self.font.getsize(text)  # text width, height
+        self.draw.rectangle((xy[0], xy[1], xy[0] + w + 1, xy[1] + h + 1), fill=txt_color)
+
+        # draw rectangle with text so that it is visible,compute the width and h
+        self.draw.text(xy, text, fill=(255, 255, 255), font=self.font)
+
     def fromarray(self, im):
         # Update self.im from a numpy array
         self.im = im if isinstance(im, Image.Image) else Image.fromarray(im)
