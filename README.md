@@ -427,8 +427,78 @@ Both the detections and classifications on esmart_hybrid:
 ```
   -----------
 ### Results 
-
-![image](https://user-images.githubusercontent.com/43852124/206877338-5ab3a4ab-264d-439f-9697-ee45bb5122dd.png)
+  
+  <table>
+    <thead>
+        <tr>
+            <th></th>
+            <th colspan="5">Detection</th>
+            <th colspan="5">Classification</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <th>Class</th>
+            <th>Input size</th>
+            <th>Precision</th>
+            <th>Recall</th>
+            <th>mAP0.5</th>
+            <th>mAP0.5-0.95</th>
+            <th>Precision</th>
+            <th>Recall</th>
+            <th>False Positive Rate</th>
+            <th>F1</th>
+        </tr>
+        <tr>
+            <th>Speed limit</th>
+            <td>516</td>
+            <td>0.893</td>
+            <td>0.903</td>
+            <td>0.954</td>
+            <td>0.676</td>
+            <td>NA</td>
+            <td>NA</td>
+            <td>NA</td>
+            <td>NA</td>
+        </tr>
+        <tr>
+            <th>Dry</th>
+            <td>516</td>
+            <td>NA</td>
+            <td>NA</td>
+            <td>NA</td>
+            <td>NA</td>
+            <td>0.954</td>
+            <td>0.966</td>
+            <td>0.0455</td>
+            <td>0.96</td>
+        </tr>
+        <tr>
+            <th>Snowy</th>
+            <td>516</td>
+            <td>NA</td>
+            <td>NA</td>
+            <td>NA</td>
+            <td>NA</td>
+            <td>0.942</td>
+            <td>0.865</td>
+            <td>0.0577</td>
+            <td>0.902</td>
+        </tr>
+        <tr>
+            <th>Wet</th>
+            <td>516</td>
+            <td>NA</td>
+            <td>NA</td>
+            <td>NA</td>
+            <td>NA</td>
+            <td>0.875</td>
+            <td>0.925</td>
+            <td>0.125</td>
+            <td>0.9</td>
+        </tr>
+    </tbody>
+</table>
 
 ## <div align="center">Environments</div>
 
