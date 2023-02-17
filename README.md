@@ -320,18 +320,18 @@ python export.py --weights yolov5s-cls.pt resnet50.pt efficientnet_b0.pt --inclu
 
 ## <div align="center">Classification + Detection (Multitasks)⭐ NEW</div>
 ### Description 
-One Classification head so far. 
-Classifies 3 classes of road conditions: dry, snowy, wet. Detects speed signs, road work and the direction of the road.
+This is a multitask model which detects objects and classify the image on a single inference. So far there is only one classification head but adding more would be possible of course. 
 
 Check the notebook yolo-mlt-train&evaluate.ipynb if you want to know more about the training and evaluation of yolo-mlt.
 
 ### Data
-You can either train on a hybrid dataset (with missing labels for the detection task) or with 2 datasets (one for each task). I presonnaly recommend to use 2 datasets beacuse it has been more performant, at least for the data that we currently have. 
+You can either train on a hybrid dataset (with missing labels for the detection task) or with 2 datasets (one for each task). 
 
-1) Option 1: Hybrid 
+1) Option 1: Hybrid Dataset
 
-Merging esmart_context and esmart_wip was done using the notebook *Prepare_data_yolo_multitasks.ipynb* 
-You can pull the hybrid dataset from its S3 bucket or reconstruct it with any data you would like. The following format needs to be respected:
+Merging both your 2 datasets can be done using the notebook *Prepare_data_yolo_multitasks.ipynb* 
+You might need to perform some changes depending on your data and how it's structured. I coded this for my personal use. 
+The following format needs to be respected:
 
 - data.yaml
 - .jpg
@@ -348,13 +348,12 @@ You can pull the hybrid dataset from its S3 bucket or reconstruct it with any da
   
 2) Option 2: 2 datasets
   
-  This option is the best one so far. Both datasets (*esmat_context* and *esmart_wip*) need to be formatted as described in Option #1 just above.
+  Both datasets (for image classification and object detection) need to be formatted as described in Option #1 just above.
 
   
 ### Training 
 - To train the classification, use the parameter *--only_cls*. Example:
 ```bash
-# Single-GPU
 python multitasks/train.py --epochs 20 --img 224 --weights yolov5s-cls.pt 
                            --cfg models/yolov5s_mlt.yaml 
                            --data ../datasets/data_road_cond_seq_split_2_test/data.yaml 
@@ -362,16 +361,13 @@ python multitasks/train.py --epochs 20 --img 224 --weights yolov5s-cls.pt
 ```
 - To train the detection, use the parameter *--only_det*. Example:
 ```bash
-# Single-GPU
 python multitasks/train.py --epochs 20 --img 224 --weights yolov5s-cls.pt 
                            --cfg models/yolov5s_mlt.yaml 
                            --data ../datasets/esmart_wip/data.yaml --only_det 
                            --batch-size 32
 ```
 
-- To train on both tasks separately:
-
-See [Run Det](https://wandb.ai/esmart/YOLOv5/runs/17ol1gly?workspace=user-selimgilon) + [Run Cls](https://wandb.ai/esmart/YOLOv5/runs/ilovlhdf?workspace=user-selimgilon)
+- To train one task and then the other one:
 ```bash
 # The detection
 !python multitasks/train.py --epochs 50 --img 512 --weights yolov5s.pt 
@@ -383,8 +379,9 @@ See [Run Det](https://wandb.ai/esmart/YOLOv5/runs/17ol1gly?workspace=user-selimg
                             --batch-size 32 --only_cls --freeze_all_but 8 25 
                             --cut_img 0.5
 ```
+You can experiment different training methods using the parameter --freeze_all_but, --freeze_till, --freeze_all to freeze some layers of choice. 
 
-- To train on both tasks simultaneously (**best recipe** -- [See Run](https://wandb.ai/esmart/YOLOv5/runs/2l8o64og?workspace=user-selimgilon)) with the hybrid dataset, don't use any specific parameters but keep in mind to scale the cls loss (cls_road_cond) in the hyperparameters file:
+- To train on both tasks simultaneously (**best recipe** for my case) with the hybrid dataset, don't use any specific parameters but keep in mind you might need to scale the cls loss (cls_road_cond) in the hyperparameters file:
 
 ```bash
 # Single-GPU
@@ -396,6 +393,8 @@ python multitasks/train.py --epochs 100 --img 512 --weights yolov5s.pt
 
   -----------
 ### Evaluation
+Note that I included a *temperature* argument to calibrate the model and be able to interpret the outputs as probabilities - [Paper](https://arxiv.org/abs/1706.04599). 
+
 The road conditions classification on esmart_context:
 ```bash
 !python multitasks/val.py --img 512 --weights {WEIGHTS} 
@@ -422,13 +421,10 @@ Both the detections and classifications on esmart_hybrid:
   -----------
   
 ### Export the model 
+Only onnx supported at the moment. TFLite comming soon hopefully.
 ```bash
 !python export.py --weights {WEIGHTS} --include onnx
 ```
-  -----------
-### Results 
-
-![image](https://user-images.githubusercontent.com/43852124/206877338-5ab3a4ab-264d-439f-9697-ee45bb5122dd.png)
 
 ## <div align="center">Environments</div>
 
