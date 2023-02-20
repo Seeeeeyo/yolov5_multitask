@@ -446,7 +446,6 @@ Both the detections and classifications on esmart_hybrid:
             <th>mAP0.5-0.95</th>
             <th>Precision</th>
             <th>Recall</th>
-            <th>False Positive Rate</th>
             <th>F1</th>
         </tr>
         <tr>
@@ -456,7 +455,6 @@ Both the detections and classifications on esmart_hybrid:
             <td>0.903</td>
             <td>0.954</td>
             <td>0.676</td>
-            <td>NA</td>
             <td>NA</td>
             <td>NA</td>
             <td>NA</td>
@@ -470,7 +468,6 @@ Both the detections and classifications on esmart_hybrid:
             <td>NA</td>
             <td>0.954</td>
             <td>0.966</td>
-            <td>0.0455</td>
             <td>0.96</td>
         </tr>
         <tr>
@@ -482,7 +479,6 @@ Both the detections and classifications on esmart_hybrid:
             <td>NA</td>
             <td>0.942</td>
             <td>0.865</td>
-            <td>0.0577</td>
             <td>0.902</td>
         </tr>
         <tr>
@@ -494,7 +490,6 @@ Both the detections and classifications on esmart_hybrid:
             <td>NA</td>
             <td>0.875</td>
             <td>0.925</td>
-            <td>0.125</td>
             <td>0.9</td>
         </tr>
     </tbody>
